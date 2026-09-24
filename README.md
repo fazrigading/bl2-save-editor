@@ -9,6 +9,24 @@ back atomically with rotating backups and post-write verification.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue) ![Flask](https://img.shields.io/badge/Flask-2.0+-green) ![Three.js](https://img.shields.io/badge/Three.js-r128-orange) ![License](https://img.shields.io/badge/license-personal_use-lightgrey)
 
+> **Go/Wails desktop version now available** — this repository is being
+> rewritten as a native desktop app in Go (`desktop/`). It reimplements the
+> save format (protobuf + Huffman + LZO1X + SHA-1 containers) natively with
+> byte-identical golden tests against the Python reference, requires no
+> Python/browser, and ships as a single binary. Grab prebuilt Windows and
+> Linux binaries from the [Releases](../../releases) page, or run:
+>
+> ```bash
+> cd desktop
+> wails build            # GUI editor
+> go build ./cmd/bl2patch   # standalone exe patcher CLI
+> ```
+>
+> The Python app below remains fully functional during the migration.
+> Differences: achievements are save-state only (written into the save; they
+> unlock when the game loads it — no native Steam API), and the
+> `borderlands2-tool` clone is no longer needed.
+
 ---
 
 ## Quick start
