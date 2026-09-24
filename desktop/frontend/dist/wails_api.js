@@ -6,6 +6,16 @@
         return window.go.bridge.Bridge;
     }
 
+    // First-run: if no valid config yet, show the setup screen.
+    document.addEventListener("DOMContentLoaded", async function () {
+        if (window.location.pathname.indexOf("setup") !== -1) return;
+        try {
+            var raw = await backend().Invoke("GET", "/api/configured", null);
+            var res = JSON.parse(raw);
+            if (!res.configured) window.location.href = "/setup.html";
+        } catch (e) {}
+    });
+
     async function api(url, opts = {}) {
         const method = (opts.method || "GET").toUpperCase();
         let body = null;

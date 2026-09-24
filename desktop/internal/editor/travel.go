@@ -70,8 +70,9 @@ func (s *Store) UnlockAllFastTravel(filename string) (int, error) {
 	return 0, nil
 }
 
-type unknownStationError string
+// UnknownStationError indicates a station name not in the known list.
+type UnknownStationError string
 
-func (e unknownStationError) Error() string { return "unknown station: " + string(e) }
+func (e UnknownStationError) Error() string { return "unknown station: " + string(e) }
 
-func errUnknownStation(s string) error { return unknownStationError(s) }
+func errUnknownStation(s string) error { return UnknownStationError(s) }

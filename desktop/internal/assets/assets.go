@@ -249,6 +249,11 @@ func (db *DB) loadJSONList(filename string) map[string][]string {
 	return out
 }
 
+// EnsureLoaded eagerly loads the Gibbed data.
+func (db *DB) EnsureLoaded() {
+	db.ensureLoaded()
+}
+
 // ensureLoaded lazily loads the Gibbed data.
 func (db *DB) ensureLoaded() {
 	if db.loaded {

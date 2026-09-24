@@ -184,9 +184,9 @@ func TestItemOperations(t *testing.T) {
 func TestCharacterUpdate(t *testing.T) {
 	store, _ := newTestStore(t)
 	info, err := store.UpdateCharacter("Save0001.sav", map[string]any{
-		"level":       float64(50),
-		"money":       float64(12345),
-		"name":        "TestName",
+		"level":        float64(50),
+		"money":        float64(12345),
+		"name":         "TestName",
 		"skill_points": float64(99),
 	})
 	if err != nil {

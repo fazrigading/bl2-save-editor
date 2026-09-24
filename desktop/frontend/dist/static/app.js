@@ -3725,8 +3725,8 @@ function renderAchievements(data) {
     var unlockedCount = data.filter(function(a) { return a.unlocked === true; }).length;
     var steamEl = document.getElementById("steam-status");
     if (steamEl && _steamReady) {
-        steamEl.textContent = "Steam: Connected \u2014 " + unlockedCount + "/" + totalCount + " unlocked";
-        steamEl.style.color = unlockedCount === totalCount ? "var(--green, #4c6)" : "var(--accent)";
+        steamEl.textContent = "Achievements: save-state mode \u2014 " + totalCount + " trackable";
+        steamEl.style.color = "var(--accent)";
     }
 
     var html = "";
@@ -3764,55 +3764,28 @@ document.getElementById("ach-hide-unlocked").addEventListener("change", function
 
 document.getElementById("btn-unlock-selected-ach").addEventListener("click", async function() {
     if (_mutating) return;
-    var checkboxes = document.querySelectorAll(".ach-checkbox:checked");
-    var names = [];
-    checkboxes.forEach(function(cb) { names.push(cb.dataset.api); });
-    if (!names.length) { toast("No achievements selected", "error"); return; }
-    _mutating = true;
-    document.getElementById("ach-status").textContent = "Unlocking...";
-    try {
-        var res = await api("/api/steam/achievements/unlock", {
-            method: "POST", body: { achievements: names }
-        });
-        toast("Unlocked " + res.unlocked + " of " + res.total + " achievements");
-        document.getElementById("ach-status").textContent = res.unlocked + " unlocked";
-        setTimeout(function() { document.getElementById("ach-status").textContent = ""; }, 3000);
-        await loadAchievements();
-    } catch (e) { toast("Error: " + e.message, "error"); document.getElementById("ach-status").textContent = ""; }
-    _mutating = false;
+    if (!currentFile) { toast("Load a save first \u2014 achievements are written into the save file", "error"); return; }
+    toast("Save-state mode: use 'Unlock All' to write achievement state into " + currentFile, "warning");
 });
 
 document.getElementById("btn-unlock-all-ach").addEventListener("click", async function() {
     if (_mutating) return;
-    if (!confirm("Unlock ALL Steam achievements for BL2?")) return;
+    if (!currentFile) { toast("Load a save first \u2014 achievements are written into the save file", "error"); return; }
+    if (!confirm("Write all save-trackable achievement state into " + currentFile + "?\n\nAchievements unlock when the game loads the edited save.")) return;
     _mutating = true;
-    document.getElementById("ach-status").textContent = "Unlocking all...";
+    document.getElementById("ach-status").textContent = "Writing achievement state...";
     try {
-        var res = await api("/api/steam/achievements/unlock-all", { method: "POST" });
-        toast("Unlocked " + res.unlocked + " of " + res.total + " achievements");
-        document.getElementById("ach-status").textContent = "All unlocked!";
+        await api("/api/save/" + currentFile + "/unlock-achievements", { method: "POST" });
+        toast("Achievement state written to " + currentFile);
+        document.getElementById("ach-status").textContent = "Save state updated";
         setTimeout(function() { document.getElementById("ach-status").textContent = ""; }, 3000);
-        await loadAchievements();
+        await loadSave(currentFile);
     } catch (e) { toast("Error: " + e.message, "error"); document.getElementById("ach-status").textContent = ""; }
     _mutating = false;
 });
 
-document.getElementById("btn-lock-selected-ach").addEventListener("click", async function() {
-    if (_mutating) return;
-    var checkboxes = document.querySelectorAll(".ach-checkbox:checked");
-    var names = [];
-    checkboxes.forEach(function(cb) { names.push(cb.dataset.api); });
-    if (!names.length) { toast("No achievements selected", "error"); return; }
-    if (!confirm("Re-lock " + names.length + " achievements?")) return;
-    _mutating = true;
-    try {
-        var res = await api("/api/steam/achievements/clear", {
-            method: "POST", body: { achievements: names }
-        });
-        toast("Locked " + res.cleared + " achievements");
-        await loadAchievements();
-    } catch (e) { toast("Error: " + e.message, "error"); }
-    _mutating = false;
+document.getElementById("btn-lock-selected-ach").addEventListener("click", function() {
+    toast("Save-state mode: achievements cannot be re-locked from the save", "warning");
 });
 
 document.getElementById("btn-refresh-ach").addEventListener("click", function() {
