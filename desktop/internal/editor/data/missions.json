@@ -1,0 +1,534 @@
+[
+ [
+  "GD_Episode01.M_Ep1_Champion",
+  "My First Gun",
+  1,
+  true,
+  1
+ ],
+ [
+  "GD_Episode02.M_Ep2_Henchman",
+  "Blindsided",
+  9,
+  true,
+  3
+ ],
+ [
+  "GD_Episode02.M_Ep2a_MoreGuns",
+  "Cleaning Up the Berg",
+  7,
+  true,
+  4
+ ],
+ [
+  "GD_Episode02.M_Ep2b_Henchman",
+  "The Flynt Job",
+  5,
+  true,
+  5
+ ],
+ [
+  "GD_Episode02.M_Ep2c_Henchman",
+  "Best Minion Ever",
+  14,
+  true,
+  6
+ ],
+ [
+  "GD_Episode03.M_Ep3_CatchARide",
+  "The Road to Sanctuary",
+  14,
+  true,
+  8
+ ],
+ [
+  "GD_Episode04.M_Ep4_WelcomeToSanctuary",
+  "Plan B",
+  12,
+  true,
+  8
+ ],
+ [
+  "GD_Episode05.M_Ep5_GatherArms",
+  "Hunting the Firehawk",
+  12,
+  true,
+  8
+ ],
+ [
+  "GD_Episode06.M_Ep6_RolandFindHQ",
+  "A Dam Fine Rescue",
+  14,
+  true,
+  11
+ ],
+ [
+  "GD_Episode07.M_Ep7_DestroyBandits",
+  "A Train to Catch",
+  8,
+  true,
+  13
+ ],
+ [
+  "GD_Episode08.M_Ep8_RiseOfThePhoenix",
+  "Rising Action",
+  10,
+  true,
+  16
+ ],
+ [
+  "GD_Episode09.M_Ep9_TheGateKeeper",
+  "Bright Lights, Flying City",
+  15,
+  true,
+  17
+ ],
+ [
+  "GD_Episode09a.M_Ep9a_Wildlife",
+  "Wildlife Preservation",
+  12,
+  true,
+  19
+ ],
+ [
+  "GD_Episode10.M_Ep10_TheWarehouse",
+  "The Once and Future Slab",
+  10,
+  true,
+  21
+ ],
+ [
+  "GD_Episode11.M_Ep11_TheManWhoWouldBeJack",
+  "The Man Who Would Be Jack",
+  8,
+  true,
+  24
+ ],
+ [
+  "GD_Episode12.M_Ep12_WhereToBuyAngels",
+  "Where Angels Fear to Tread",
+  14,
+  true,
+  26
+ ],
+ [
+  "GD_Episode12a.M_Ep12a_SayGoodbye",
+  "Where Angels Fear to Tread (Part 2)",
+  6,
+  true,
+  28
+ ],
+ [
+  "GD_Episode13.M_Ep13_TheTalon",
+  "The Talon of God",
+  10,
+  true,
+  30
+ ],
+ [
+  "GD_Episode14.M_Ep14_TheEndOfTheBeginning",
+  "Data Mining",
+  8,
+  true,
+  30
+ ],
+ [
+  "GD_Z1_ThisTown.M_ThisTown",
+  "This Town Ain't Big Enough",
+  6,
+  false,
+  5
+ ],
+ [
+  "GD_Z1_BadHairDay.M_BadHairDay",
+  "Bad Hair Day",
+  4,
+  false,
+  5
+ ],
+ [
+  "GD_Z1_Handsome.M_HandsomestJack",
+  "Handsome Jack Here!",
+  3,
+  false,
+  8
+ ],
+ [
+  "GD_Z1_Symbiosis.M_Symbiosis",
+  "Symbiosis",
+  5,
+  false,
+  6
+ ],
+ [
+  "GD_Z1_ShieldedFavors.M_ShieldedFavors",
+  "Shielded Favors",
+  3,
+  false,
+  7
+ ],
+ [
+  "GD_Z2_ClaptrapStash.M_ClaptrapStash",
+  "Claptrap's Secret Stash",
+  3,
+  false,
+  8
+ ],
+ [
+  "GD_Z2_RockPaperGenocide.M_RockPaperGenocide",
+  "Rock Paper Genocide",
+  8,
+  false,
+  12
+ ],
+ [
+  "GD_Z2_MedicalMystery.M_MedicalMystery",
+  "Medical Mystery",
+  5,
+  false,
+  16
+ ],
+ [
+  "GD_Z2_SplinterGroup.M_SplinterGroup",
+  "Splinter Group",
+  6,
+  false,
+  15
+ ],
+ [
+  "GD_Z2_DoctorsOrders.M_DoctorsOrders",
+  "Doctor's Orders",
+  6,
+  false,
+  19
+ ],
+ [
+  "GD_Z2_SafeAndSound.M_SafeAndSound",
+  "Safe and Sound",
+  3,
+  false,
+  16
+ ],
+ [
+  "GD_Z2_Cult.M_CultFollowing",
+  "Cult Following",
+  8,
+  false,
+  10
+ ],
+ [
+  "GD_Z2_ArmsDeal.M_ArmsDeal",
+  "Arms Dealing",
+  5,
+  false,
+  12
+ ],
+ [
+  "GD_Z2_PizzaDelivery.M_PizzaDelivery",
+  "Bandit Slaughter",
+  4,
+  false,
+  12
+ ],
+ [
+  "GD_Z3_MightyMorphin.M_MightyMorphin",
+  "Mighty Morphin'",
+  5,
+  false,
+  12
+ ],
+ [
+  "GD_Z3_PositivelyBeastly.M_MonsterHunt",
+  "Positive Self Image",
+  4,
+  false,
+  17
+ ],
+ [
+  "GD_Z3_MineAllMine.M_MineAllMine",
+  "Mine All Mine",
+  4,
+  false,
+  16
+ ],
+ [
+  "GD_Z2_TheGoodTheBadAndTheMordecai.M_GoodBadMord",
+  "The Good, the Bad, and the Mordecai",
+  5,
+  false,
+  16
+ ],
+ [
+  "GD_Z2_Assassinate.M_AssassinateTheAssassins",
+  "Assassinate the Assassins",
+  6,
+  false,
+  10
+ ],
+ [
+  "GD_Z2_YouAreCordiouslyInvited.M_CordiouslyInvited",
+  "You Are Cordially Invited",
+  6,
+  false,
+  15
+ ],
+ [
+  "GD_Z3_TheIceMan.M_IceManCometh",
+  "The Ice Man Cometh",
+  5,
+  false,
+  17
+ ],
+ [
+  "GD_Z3_ToArms.M_ToArms",
+  "To Arms!",
+  4,
+  false,
+  19
+ ],
+ [
+  "GD_Z2_NoVacancy.M_NoVacancy",
+  "No Vacancy",
+  4,
+  false,
+  13
+ ],
+ [
+  "GD_Z2_YouDontKnowJack.M_YouDontKnowJack",
+  "You. Will. Die. (Seriously.)",
+  3,
+  false,
+  13
+ ],
+ [
+  "GD_Z2_CultFollowing2.M_CultFollowing2",
+  "Cult Following: Eternal Flame",
+  5,
+  false,
+  10
+ ],
+ [
+  "GD_Z2_CultFollowing3.M_CultFollowing3",
+  "Cult Following: Lighting the Match",
+  4,
+  false,
+  10
+ ],
+ [
+  "GD_Z2_CultFollowing4.M_CultFollowing4",
+  "Cult Following: The Enkindling",
+  6,
+  false,
+  10
+ ],
+ [
+  "GD_Z2_IncineratorClayton.M_IncineratorClayton",
+  "Incinerator Clayton",
+  3,
+  false,
+  10
+ ],
+ [
+  "GD_Z3_Slap.M_SlapHappy",
+  "Slap Happy",
+  4,
+  false,
+  17
+ ],
+ [
+  "GD_Z3_ArmsDealer.M_ArmsDealer",
+  "Arms Dealer",
+  4,
+  false,
+  17
+ ],
+ [
+  "GD_Z3_HuntersGrotto.M_HuntersGrotto",
+  "Stalker of Stalkers",
+  4,
+  false,
+  19
+ ],
+ [
+  "GD_Z3_Prisoner.M_Prisoner",
+  "The Overlooked: Shields Up",
+  4,
+  false,
+  21
+ ],
+ [
+  "GD_Z3_MedicineMan.M_MedicineMan",
+  "The Overlooked: Medicine Man",
+  5,
+  false,
+  21
+ ],
+ [
+  "GD_Z3_ThisJustIn.M_ThisJustIn",
+  "This Just In",
+  4,
+  false,
+  19
+ ],
+ [
+  "GD_Z3_Hyperion.M_HomeMovies",
+  "Home Movies",
+  4,
+  false,
+  19
+ ],
+ [
+  "GD_Z3_RakManHasEnemies.M_RakManHasEnemies",
+  "Rakkaholics Anonymous",
+  3,
+  false,
+  17
+ ],
+ [
+  "GD_Z3_DocMercy.M_DocMercy",
+  "Medical Mystery: X-Com-municate",
+  3,
+  false,
+  19
+ ],
+ [
+  "GD_Z3_AnimalRights.M_AnimalRights",
+  "Animal Rights",
+  5,
+  false,
+  19
+ ],
+ [
+  "GD_Z3_WritersBlock.M_WritersBlock",
+  "Written by the Victor",
+  6,
+  false,
+  21
+ ],
+ [
+  "GD_Z3_Uncle.M_UncleTeddy",
+  "Uncle Teddy",
+  4,
+  false,
+  21
+ ],
+ [
+  "GD_Z3_RockosMWS.M_RockosMWS",
+  "Rocko's Modern Strife",
+  4,
+  false,
+  21
+ ],
+ [
+  "GD_Z3_CustomerService.M_CustomerService",
+  "Customer Service",
+  4,
+  false,
+  23
+ ],
+ [
+  "GD_Z3_FakingDeath.M_FakingDeath",
+  "Kill Yourself",
+  1,
+  false,
+  21
+ ],
+ [
+  "GD_Z3_BoatMission.M_BoatMission",
+  "A Real Boy: Clothes Make the Man",
+  4,
+  false,
+  24
+ ],
+ [
+  "GD_Z3_DemonsOfTheHorse.M_DemonHorse",
+  "The Cold Shoulder",
+  4,
+  false,
+  24
+ ],
+ [
+  "GD_Z3_GetToKnowJack.M_GetToKnowJack",
+  "Get to Know Jack",
+  6,
+  false,
+  25
+ ],
+ [
+  "GD_Z3_TreasureOfTheSands.M_TreasureOfTheSands",
+  "The Bane",
+  6,
+  false,
+  18
+ ],
+ [
+  "GD_Z3_MonsterMash.M_MonsterMash",
+  "Monster Mash",
+  5,
+  false,
+  20
+ ],
+ [
+  "GD_Z3_Overlooked.M_Overlooked",
+  "Overlooked",
+  4,
+  false,
+  21
+ ],
+ [
+  "GD_Z3_WrittenByTinyTina.M_WrittenByTinyTina",
+  "Tiny Tina's Tea Party",
+  5,
+  false,
+  24
+ ],
+ [
+  "GD_Z3_ShootMeInTheFace.M_ShootMeInTheFace",
+  "Shoot This Guy in the Face",
+  1,
+  false,
+  24
+ ],
+ [
+  "GD_Z3_ClaptrapBday.M_ClaptrapBday",
+  "Claptrap's Birthday Bash!",
+  3,
+  false,
+  26
+ ],
+ [
+  "GD_Z3_RaidBoss.M_TerramorphousRaid",
+  "You. Will. Die. (Seriously.)",
+  1,
+  false,
+  30
+ ],
+ [
+  "GD_Z3_MinecartMischief.M_MinecartMischief",
+  "Minecart Mischief",
+  4,
+  false,
+  18
+ ],
+ [
+  "GD_Z3_FollowTheGlow.M_FollowTheGlow",
+  "The Lost Treasure",
+  5,
+  false,
+  18
+ ],
+ [
+  "GD_Z3_BreakingTheBank.M_BreakingTheBank",
+  "Breaking the Bank",
+  3,
+  false,
+  24
+ ],
+ [
+  "GD_Z3_NoteForSelf.M_NoteForSelf",
+  "Note for Self-Person",
+  3,
+  false,
+  16
+ ]
+]

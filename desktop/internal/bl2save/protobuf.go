@@ -174,9 +174,13 @@ func WriteProtobuf(tree PBTree) ([]byte, error) {
 				value = subBytes
 				wireType = 2
 			} else if list, ok := value.([]uint64); ok && wireType != 2 {
-				packed, err := appendProtobufValue(nil, wireType, list)
-				if err != nil {
-					return nil, err
+				packed := make([]byte, 0, len(list)*5)
+				for _, item := range list {
+					var err error
+					packed, err = appendProtobufValue(packed, wireType, item)
+					if err != nil {
+						return nil, err
+					}
 				}
 				value = packed
 				wireType = 2
