@@ -9,8 +9,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
-dist/
-build/
+/dist/
+/build/
 *.egg
 
 # Logs
@@ -42,6 +42,9 @@ Desktop.ini
 static/models/
 static/textures/
 UmodelSaved/
+
+# Reference clone of apocalyptech/borderlands2 (needed for the Python app; ported into Go)
+borderlands2-tool/
 
 # Memory directory used by Claude Code agent
 memory/
