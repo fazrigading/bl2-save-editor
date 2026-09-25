@@ -752,6 +752,27 @@ async function loadSaveList() {
         const saves = await api("/api/saves");
         const list = document.getElementById("save-list");
         list.innerHTML = "";
+        if (!saves.length) {
+            list.innerHTML = `
+                <div class="save-empty">
+                    <div class="save-empty-title">No Vault Hunters found</div>
+                    <div class="save-empty-path" id="empty-save-dir">Checking save folder…</div>
+                    <button class="btn-secondary save-empty-btn" id="btn-empty-setup">Re-run Setup</button>
+                    <button class="btn-secondary save-empty-btn" id="btn-empty-open">Open Save Folder</button>
+                </div>`;
+            api("/api/config/paths").then(paths => {
+                const el = document.getElementById("empty-save-dir");
+                if (el) el.textContent = paths.save_dir || "(not configured)";
+            }).catch(() => {});
+            document.getElementById("btn-empty-setup").addEventListener("click", () => location.replace("/setup/"));
+            document.getElementById("btn-empty-open").addEventListener("click", async () => {
+                try {
+                    const paths = await api("/api/config/paths");
+                    await window.go.bridge.Bridge.OpenPath(paths.save_dir);
+                } catch (err) { toast("Error: " + err.message, "error"); }
+            });
+            return;
+        }
         for (const s of saves) {
             const div = document.createElement("div");
             div.className = "save-item";
@@ -3820,5 +3841,7 @@ document.querySelectorAll(".main-tab").forEach(function(tab) {
 });
 
 // ─── Init ───────────────────────────────────────────────────
+
+document.getElementById("btn-gear").addEventListener("click", () => location.replace("/setup/"));
 
 loadSaveList();

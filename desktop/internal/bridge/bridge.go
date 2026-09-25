@@ -97,6 +97,11 @@ func (b *Bridge) SelectFolder(title string) (string, error) {
 	return runtime.OpenDirectoryDialog(b.ctx, runtime.OpenDialogOptions{Title: title})
 }
 
+// OpenPath opens a file or directory in the platform file manager.
+func (b *Bridge) OpenPath(path string) error {
+	return platform.OpenPath(path)
+}
+
 // Configured reports whether a valid config is loaded.
 func (b *Bridge) Configured() bool {
 	return b.cfg != nil && b.cfg.Valid()
@@ -227,6 +232,7 @@ var routes = []route{
 	{method: "POST", segs: []string{"api", "setup", "save"}, handler: (*Bridge).hSetupSave},
 	{method: "POST", segs: []string{"api", "setup", "download-gibbed"}, handler: (*Bridge).hDownloadGibbed},
 	{method: "GET", segs: []string{"api", "configured"}, handler: (*Bridge).hConfigured},
+	{method: "GET", segs: []string{"api", "config", "paths"}, handler: (*Bridge).hConfigPaths},
 
 	{method: "GET", segs: []string{"api", "saves"}, handler: (*Bridge).hListSaves},
 	{method: "GET", segs: []string{"api", "saves", "previews"}, handler: (*Bridge).hSavePreviews},
@@ -390,6 +396,28 @@ func (b *Bridge) hConfigured(_ params, _ any, _ url.Values) (any, *apiError) {
 	return map[string]any{"configured": b.Configured()}, nil
 }
 
+// CurrentPaths returns the configured paths for menus and the frontend.
+func (b *Bridge) CurrentPaths() map[string]any {
+	cfg := b.currentConfig()
+	return map[string]any{
+		"save_dir":    cfg.SaveDir,
+		"gibbed_dir":  cfg.GibbedDir,
+		"game_dir":    cfg.GameDir,
+		"config_path": platform.ConfigPath(),
+	}
+}
+
+func (b *Bridge) currentConfig() *platform.Config {
+	if b.cfg == nil {
+		b.cfg = platform.Load()
+	}
+	return b.cfg
+}
+
+func (b *Bridge) hConfigPaths(_ params, _ any, _ url.Values) (any, *apiError) {
+	return b.CurrentPaths(), nil
+}
+
 func (b *Bridge) hDownloadGibbed(_ params, _ any, _ url.Values) (any, *apiError) {
 	if b.ctx == nil {
 		return nil, errBad(500, "app not started")
@@ -404,15 +432,28 @@ func (b *Bridge) hDownloadGibbed(_ params, _ any, _ url.Values) (any, *apiError)
 }
 
 func (b *Bridge) hDetect(_ params, _ any, _ url.Values) (any, *apiError) {
-	cfg := platform.Load()
+	current := platform.Load()
+	saveDir := platform.DetectSaveDir()
+	if current.SaveDir != "" {
+		saveDir = current.SaveDir
+	}
+	gibbedDir := platform.DetectGibbedDir()
+	if current.GibbedDir != "" {
+		gibbedDir = current.GibbedDir
+	}
+	gameDir := platform.DetectSteamDir()
+	if current.GameDir != "" {
+		gameDir = current.GameDir
+	}
 	return map[string]any{
-		"save_dir":   platform.DetectSaveDir(),
-		"game_dir":   platform.DetectSteamDir(),
-		"gibbed_dir": platform.DetectGibbedDir(),
+		"save_dir":   saveDir,
+		"game_dir":   gameDir,
+		"gibbed_dir": gibbedDir,
 		"current": map[string]any{
-			"save_dir":   cfg.SaveDir,
-			"gibbed_dir": cfg.GibbedDir,
-			"game_dir":   cfg.GameDir,
+			"save_dir":           current.SaveDir,
+			"gibbed_dir":         current.GibbedDir,
+			"game_dir":           current.GameDir,
+			"backup_generations": current.BackupGenerations,
 		},
 	}, nil
 }
@@ -428,11 +469,18 @@ func (b *Bridge) hSetupSave(_ params, payload any, _ url.Values) (any, *apiError
 		}
 		return ""
 	}
+	backupGens := pInt(obj, "backup_generations", 5)
+	if backupGens < 1 {
+		backupGens = 1
+	}
+	if backupGens > 20 {
+		backupGens = 20
+	}
 	cfg := &platform.Config{
 		SaveDir:           str("save_dir"),
 		GibbedDir:         str("gibbed_dir"),
 		GameDir:           str("game_dir"),
-		BackupGenerations: 5,
+		BackupGenerations: backupGens,
 	}
 	if cfg.SaveDir == "" {
 		return nil, errBad(400, "Save directory not found. Please check the path.")

@@ -44,4 +44,24 @@
             reveal();
         }
     });
+
+    // Native menu → frontend navigation (Settings → Re-run Setup Wizard).
+    document.addEventListener("DOMContentLoaded", function () {
+        if (!window.runtime || !window.runtime.EventsOn) return;
+        window.runtime.EventsOn("app:navigate", function (path) {
+            if (path === "/" || path === "/setup/") window.location.replace(path);
+        });
+    });
+
+    // Gibbed auto-download toasts in the editor (the setup screen has its
+    // own listeners and doesn't load this file).
+    document.addEventListener("DOMContentLoaded", function () {
+        if (!window.runtime || !window.runtime.EventsOn) return;
+        window.runtime.EventsOn("gibbed:done", function () {
+            if (typeof toast === "function") toast("Gibbed data installed — item database enabled", "success");
+        });
+        window.runtime.EventsOn("gibbed:error", function (d) {
+            if (typeof toast === "function") toast("Gibbed data download failed: " + d.error, "warning");
+        });
+    });
 })();

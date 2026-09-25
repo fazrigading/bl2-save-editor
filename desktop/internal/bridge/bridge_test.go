@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"bl2save/desktop/internal/assets"
@@ -99,6 +100,21 @@ func TestRouterMissionDB(t *testing.T) {
 	}
 	if len(out.([]any)) == 0 {
 		t.Fatal("empty mission db")
+	}
+}
+
+func TestRouterConfigPaths(t *testing.T) {
+	b := testBridge(t)
+	out, ae := invoke(t, b, "GET", "/api/config/paths", "")
+	if ae != nil {
+		t.Fatalf("api error: %s", ae.msg)
+	}
+	m := out.(map[string]any)
+	if m["save_dir"] == "" || m["config_path"] == "" {
+		t.Fatalf("missing path fields: %v", m)
+	}
+	if !strings.Contains(m["config_path"].(string), "config.json") {
+		t.Fatalf("unexpected config_path: %v", m["config_path"])
 	}
 }
 

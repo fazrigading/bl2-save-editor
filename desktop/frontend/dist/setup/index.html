@@ -166,12 +166,20 @@
 
             <div class="field">
                 <label>Gibbed Data Directory</label>
-                <div class="hint">Item/weapon database dumps (optional — enables item names, add-item wizards, code import/export). Get it with: git clone --depth 1 https://github.com/gibbed/Borderlands2Dumps</div>
+                <div class="hint">Item/weapon database dumps (optional — enables item names, add-item wizards, code import/export). Leave empty to auto-download, or get it from github.com/gibbed/Borderlands2Dumps</div>
                 <div style="display:flex;gap:8px">
                     <input type="text" id="f-gibbed-dir" style="flex:1">
+                    <button class="btn-secondary" id="btn-download-gibbed" style="display:none">Download</button>
                     <button class="btn-secondary" id="btn-browse-gibbed">Browse</button>
                 </div>
                 <div class="status" id="s-gibbed-dir"></div>
+            </div>
+
+            <div class="field">
+                <label>Backup Generations</label>
+                <div class="hint">How many .bak backups to keep per save (1-20)</div>
+                <input type="number" id="f-backup-gens" min="1" max="20" value="5">
+                <div class="status" id="s-backup-gens"></div>
             </div>
 
             <div class="btn-row">
@@ -206,6 +214,8 @@
             document.getElementById("f-save-dir").value = data.save_dir || "";
             document.getElementById("f-game-dir").value = data.game_dir || "";
             document.getElementById("f-gibbed-dir").value = data.gibbed_dir || "";
+            document.getElementById("f-backup-gens").value =
+                (data.current && data.current.backup_generations) || 5;
 
             if (data.save_dir) setStatus("s-save-dir", "Auto-detected", "ok");
             else setStatus("s-save-dir", "Not found - please enter manually", "warn");
@@ -214,7 +224,9 @@
             else setStatus("s-game-dir", "Not found - optional", "warn");
 
             if (data.gibbed_dir) setStatus("s-gibbed-dir", "Auto-detected", "ok");
-            else setStatus("s-gibbed-dir", "Not found - item import/export will be unavailable", "warn");
+            else setStatus("s-gibbed-dir", "Not found - leave empty to auto-download", "warn");
+
+            updateGibbedButtons();
 
         } catch (e) {
             setStatus("s-save-dir", "Detection failed: " + e.message, "err");
@@ -223,10 +235,49 @@
         document.getElementById("setup-form").style.display = "block";
     }
 
+    function updateGibbedButtons() {
+        var empty = !document.getElementById("f-gibbed-dir").value.trim();
+        document.getElementById("btn-download-gibbed").style.display = empty ? "" : "none";
+    }
+
+    async function downloadGibbed() {
+        setStatus("s-gibbed-dir", "Starting download...", "warn");
+        try {
+            var raw = await bridge().Invoke("POST", "/api/setup/download-gibbed", null);
+            var data = JSON.parse(raw);
+            if (data.missing === 0) {
+                document.getElementById("f-gibbed-dir").value = data.dir;
+                setStatus("s-gibbed-dir", "Gibbed data already installed", "ok");
+                updateGibbedButtons();
+            } else {
+                setStatus("s-gibbed-dir", "Downloading 0/" + data.missing + "...", "warn");
+            }
+        } catch (e) {
+            setStatus("s-gibbed-dir", "Download failed: " + e.message, "err");
+        }
+    }
+
+    function listenGibbedEvents() {
+        if (!window.runtime || !window.runtime.EventsOn) return;
+        window.runtime.EventsOn("gibbed:progress", function (d) {
+            setStatus("s-gibbed-dir", "Downloading " + d.done + "/" + d.total + ": " + d.name, "warn");
+        });
+        window.runtime.EventsOn("gibbed:done", function (d) {
+            document.getElementById("f-gibbed-dir").value = d.dir;
+            setStatus("s-gibbed-dir", "Downloaded & installed (" + d.dir + ")", "ok");
+            updateGibbedButtons();
+        });
+        window.runtime.EventsOn("gibbed:error", function (d) {
+            setStatus("s-gibbed-dir", "Download failed: " + d.error, "err");
+        });
+    }
+
     document.getElementById("btn-redetect").addEventListener("click", detect);
     document.getElementById("btn-browse-save").addEventListener("click", function() { browseTo("f-save-dir"); });
     document.getElementById("btn-browse-game").addEventListener("click", function() { browseTo("f-game-dir"); });
     document.getElementById("btn-browse-gibbed").addEventListener("click", function() { browseTo("f-gibbed-dir"); });
+    document.getElementById("btn-download-gibbed").addEventListener("click", downloadGibbed);
+    document.getElementById("f-gibbed-dir").addEventListener("input", updateGibbedButtons);
 
     document.getElementById("btn-save").addEventListener("click", async function() {
         var errEl = document.getElementById("error-msg");
@@ -235,6 +286,7 @@
             save_dir: document.getElementById("f-save-dir").value.trim(),
             game_dir: document.getElementById("f-game-dir").value.trim(),
             gibbed_dir: document.getElementById("f-gibbed-dir").value.trim(),
+            backup_generations: parseInt(document.getElementById("f-backup-gens").value, 10) || 5,
         };
         try {
             var raw = await bridge().Invoke("POST", "/api/setup/save", JSON.stringify(config));
@@ -262,7 +314,10 @@
         });
     }
 
-    waitForBridge().then(detect);
+    waitForBridge().then(function () {
+        listenGibbedEvents();
+        detect();
+    });
     </script>
 </body>
 </html>

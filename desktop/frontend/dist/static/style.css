@@ -2533,3 +2533,11 @@ header { height: 52px; box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 1px 0 var(--bor
 .ach-desc { font-size: 11px; color: var(--text-dim); }
 .ach-api-name { font-size: 10px; color: var(--text-dim); font-family: monospace; }
 
+
+/* ─── Sidebar: empty state + settings gear ─────────────────── */
+.save-empty { padding: 18px 12px; text-align: center; color: var(--text-dim); }
+.save-empty-title { font-family: 'Oswald', sans-serif; font-size: 14px; letter-spacing: 1px; color: var(--accent); margin-bottom: 8px; }
+.save-empty-path { font-size: 11px; word-break: break-all; margin-bottom: 12px; opacity: 0.8; }
+.save-empty-btn { display: inline-block; margin: 2px 4px; padding: 6px 10px; font-size: 11px; cursor: pointer; }
+.sidebar-header .gear-btn { float: right; background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; }
+.sidebar-header .gear-btn:hover { color: #fff; }
