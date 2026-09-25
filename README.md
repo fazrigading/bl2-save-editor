@@ -18,9 +18,14 @@ back atomically with rotating backups and post-write verification.
 >
 > ```bash
 > cd desktop
-> wails build            # GUI editor
+> make build             # GUI editor (Linux: webkit2gtk-4.1 via webkit2_41 tag)
 > go build ./cmd/bl2patch   # standalone exe patcher CLI
 > ```
+>
+> Linux needs the webkit2gtk 4.1 dev packages:
+> `sudo dnf install webkit2gtk4.1-devel` (Fedora) or
+> `sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev` (Debian/Ubuntu),
+> and builds must pass `-tags webkit2_41` to wails (see `desktop/Makefile`).
 >
 > The Python app below remains fully functional during the migration.
 > Differences: achievements are save-state only (written into the save; they

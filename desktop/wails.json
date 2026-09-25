@@ -7,6 +7,8 @@
   "frontend:dev:watcher": "",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "BL2 Save Editor"
+    "name": "Fazri Gading",
+    "email": "fazrigading@gmail.com",
+    "website": "https://fazrigading.github.io"
   }
 }
