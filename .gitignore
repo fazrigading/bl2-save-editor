@@ -23,6 +23,7 @@ config.json
 .vscode/
 .idea/
 .claude/
+.commandcode/
 *.swp
 *.swo
 
