@@ -251,7 +251,18 @@
         }
     });
 
-    detect();
+    function waitForBridge() {
+        return new Promise(function (resolve) {
+            var tries = 0;
+            (function check() {
+                if (window.go && window.go.bridge && window.go.bridge.Bridge) return resolve();
+                if (++tries > 100) return resolve();
+                setTimeout(check, 50);
+            })();
+        });
+    }
+
+    waitForBridge().then(detect);
     </script>
 </body>
 </html>

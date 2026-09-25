@@ -187,12 +187,16 @@ func (c *Config) Save() error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// Valid reports whether the config is complete enough to run the editor.
-func (c *Config) Valid() bool {
-	return c.SaveDir != "" && dirExists(c.SaveDir)
+// ConfigFileExists reports whether a config.json is present (Python parity:
+// the setup wizard shows whenever it is missing, regardless of detection).
+func ConfigFileExists() bool {
+	_, err := os.Stat(ConfigPath())
+	return err == nil
 }
 
-func dirExists(p string) bool {
-	fi, err := os.Stat(p)
-	return err == nil && fi.IsDir()
+// Valid reports whether the config is complete enough to run the editor.
+// Mirrors app.py: config.json must exist AND save_dir must be set —
+// auto-detected values alone don't count as configured.
+func (c *Config) Valid() bool {
+	return ConfigFileExists() && c.SaveDir != ""
 }

@@ -21,6 +21,11 @@ func testBridge(t *testing.T) *Bridge {
 	if err := os.WriteFile(filepath.Join(dir, "Save0001.sav"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The handlers gate on a config file existing next to the binary
+	// (Python parity), so materialize one for the test run.
+	if err := os.WriteFile(platform.ConfigPath(), []byte(`{"save_dir":"`+dir+`","backup_generations":5}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	b := New()
 	b.cfg = &platform.Config{SaveDir: dir, BackupGenerations: 5}
 	b.store = editor.NewStore(dir, 5, filepath.Join(dir, "loadouts"))
