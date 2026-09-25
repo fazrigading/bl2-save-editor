@@ -273,20 +273,29 @@ function getCharSVG(name) { return CHARACTER_SVGS[name] || CHARACTER_SVGS.Axton;
 // ─── Helpers ────────────────────────────────────────────────
 
 async function api(url, opts = {}) {
-    if (opts.body && typeof opts.body === "object") {
-        opts.headers = { "Content-Type": "application/json" };
-        opts.body = JSON.stringify(opts.body);
+    const method = (opts.method || "GET").toUpperCase();
+    let body = null;
+    if (opts.body != null) {
+        body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
     }
-    const res = await fetch(url, opts);
-    const ct = (res.headers.get("content-type") || "");
-    if (!ct.includes("application/json")) {
-        const msg = "Server returned non-JSON response (status " + res.status + ")";
+    let raw;
+    try {
+        raw = await window.go.bridge.Bridge.Invoke(method, url, body);
+    } catch (err) {
+        const msg = (err && err.message) ? err.message : String(err);
         toast(msg, "error");
         throw new Error(msg);
     }
-    const json = await res.json();
-    if (!res.ok) {
-        const msg = json.error || "Request failed";
+    let json;
+    try {
+        json = JSON.parse(raw);
+    } catch (e) {
+        const msg = "Backend returned non-JSON response";
+        toast(msg, "error");
+        throw new Error(msg);
+    }
+    if (json && json.error) {
+        const msg = json.error;
         toast(msg, "error");
         throw new Error(msg);
     }
