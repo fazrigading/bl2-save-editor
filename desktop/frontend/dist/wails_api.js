@@ -36,7 +36,9 @@
             if (res.configured) {
                 reveal();
             } else {
-                window.location.replace("/setup.html");
+                // /setup/ is a directory page: the Wails runtime (window.go)
+                // is only injected into paths ending in "/" or /index.html.
+                window.location.replace("/setup/");
             }
         } catch (e) {
             reveal();
