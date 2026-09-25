@@ -3,6 +3,7 @@
 package assets
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"os"
@@ -216,6 +217,8 @@ func (db *DB) loadJSON(filename string) map[string]map[string]any {
 	if err != nil {
 		return out
 	}
+	// Tolerate a leading UTF-8 BOM (present in upstream Gibbed dumps).
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return out
@@ -236,6 +239,7 @@ func (db *DB) loadJSONList(filename string) map[string][]string {
 	if err != nil {
 		return out
 	}
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return out

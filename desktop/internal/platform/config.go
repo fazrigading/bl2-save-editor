@@ -107,6 +107,7 @@ func detectSaveDir() string {
 
 func detectGibbedDir() string {
 	candidates := []string{
+		GibbedDataDir(),
 		"gibbed_data",
 		filepath.Join("..", "gibbed_data"),
 	}

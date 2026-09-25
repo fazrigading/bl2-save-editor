@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -29,6 +30,9 @@ type Bridge struct {
 
 	mu           sync.Mutex
 	previewCache map[string]previewEntry
+
+	cfgMu      sync.Mutex
+	gibbedBusy atomic.Bool
 }
 
 type previewEntry struct {
@@ -45,12 +49,47 @@ func (b *Bridge) Startup(ctx context.Context) {
 	b.ReloadConfig()
 }
 
-// ReloadConfig (re)loads config.json and rebuilds the store.
+// ReloadConfig (re)loads config.json and rebuilds the store. When the config
+// is valid but Gibbed data is not configured, the dumps are downloaded
+// automatically in the background.
 func (b *Bridge) ReloadConfig() {
 	b.cfg = platform.Load()
 	b.adb = assets.New(b.cfg.GibbedDir)
 	b.store = editor.NewStore(b.cfg.SaveDir, b.cfg.BackupGenerations,
 		filepath.Join(filepath.Dir(platform.ConfigPath()), "loadouts"))
+	if b.ctx != nil && b.cfg.Valid() && b.cfg.GibbedDir == "" {
+		b.startGibbedDownload()
+	}
+}
+
+// startGibbedDownload downloads the Gibbed data dumps into the managed
+// directory (unless already running) and updates the config when finished.
+func (b *Bridge) startGibbedDownload() {
+	if b.ctx == nil || !b.gibbedBusy.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		dir := platform.GibbedDataDir()
+		err := platform.DownloadGibbedData(dir, func(done, total int, name string) {
+			runtime.EventsEmit(b.ctx, "gibbed:progress", map[string]any{
+				"done": done, "total": total, "name": name,
+			})
+		})
+		if err != nil {
+			runtime.EventsEmit(b.ctx, "gibbed:error", map[string]any{"error": err.Error()})
+			b.gibbedBusy.Store(false)
+			return
+		}
+		b.cfgMu.Lock()
+		if b.cfg != nil && b.cfg.GibbedDir == "" {
+			b.cfg.GibbedDir = dir
+			_ = b.cfg.Save()
+		}
+		b.cfgMu.Unlock()
+		b.ReloadConfig()
+		runtime.EventsEmit(b.ctx, "gibbed:done", map[string]any{"dir": dir})
+		b.gibbedBusy.Store(false)
+	}()
 }
 
 // SelectFolder opens a native directory picker (used by the setup screen).
@@ -186,6 +225,7 @@ type route struct {
 var routes = []route{
 	{method: "GET", segs: []string{"api", "setup", "detect"}, handler: (*Bridge).hDetect},
 	{method: "POST", segs: []string{"api", "setup", "save"}, handler: (*Bridge).hSetupSave},
+	{method: "POST", segs: []string{"api", "setup", "download-gibbed"}, handler: (*Bridge).hDownloadGibbed},
 	{method: "GET", segs: []string{"api", "configured"}, handler: (*Bridge).hConfigured},
 
 	{method: "GET", segs: []string{"api", "saves"}, handler: (*Bridge).hListSaves},
@@ -348,6 +388,19 @@ func matchRoute(r *route, segs []string) (params, int, bool) {
 
 func (b *Bridge) hConfigured(_ params, _ any, _ url.Values) (any, *apiError) {
 	return map[string]any{"configured": b.Configured()}, nil
+}
+
+func (b *Bridge) hDownloadGibbed(_ params, _ any, _ url.Values) (any, *apiError) {
+	if b.ctx == nil {
+		return nil, errBad(500, "app not started")
+	}
+	dir := platform.GibbedDataDir()
+	missing := len(platform.GibbedMissing(dir))
+	if missing == 0 {
+		return map[string]any{"ok": true, "dir": dir, "missing": 0}, nil
+	}
+	b.startGibbedDownload()
+	return map[string]any{"ok": true, "dir": dir, "missing": missing}, nil
 }
 
 func (b *Bridge) hDetect(_ params, _ any, _ url.Values) (any, *apiError) {
