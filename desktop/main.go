@@ -75,6 +75,7 @@ func buildMenu(b *bridge.Bridge) *menu.Menu {
 
 func main() {
 	b := bridge.New()
+	appSvc, savesSvc, editorSvc, itemsSvc, assetsSvc, steamSvc := b.Services()
 
 	onStartup := func(ctx context.Context) {
 		appCtx = ctx
@@ -93,7 +94,7 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 10, G: 12, B: 18, A: 255},
 		OnStartup:        onStartup,
 		Bind: []interface{}{
-			b,
+			appSvc, savesSvc, editorSvc, itemsSvc, assetsSvc, steamSvc,
 		},
 		Menu: buildMenu(b),
 		Windows: &windows.Options{

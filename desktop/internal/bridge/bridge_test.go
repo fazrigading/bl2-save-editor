@@ -1,7 +1,6 @@
 package bridge
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +21,7 @@ func testBridge(t *testing.T) *Bridge {
 	if err := os.WriteFile(filepath.Join(dir, "Save0001.sav"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// The handlers gate on a config file existing next to the binary
+	// The services gate on a config file existing next to the binary
 	// (Python parity), so materialize one for the test run.
 	if err := os.WriteFile(platform.ConfigPath(), []byte(`{"save_dir":"`+dir+`","backup_generations":5}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -34,107 +33,69 @@ func testBridge(t *testing.T) *Bridge {
 	return b
 }
 
-func invoke(t *testing.T, b *Bridge, method, path, body string) (any, *apiError) {
-	t.Helper()
-	raw, err := b.Invoke(method, path, body)
+func TestSavesListSaves(t *testing.T) {
+	sv := &Saves{testBridge(t)}
+	saves, err := sv.ListSaves()
 	if err != nil {
-		t.Fatalf("Invoke %s %s: %v", method, path, err)
+		t.Fatalf("ListSaves: %v", err)
 	}
-	var out any
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		t.Fatalf("parse response: %v", err)
+	if len(saves) != 1 {
+		t.Fatalf("expected 1 save, got %v", saves)
 	}
-	if m, ok := out.(map[string]any); ok {
-		if e, hasErr := m["error"]; hasErr {
-			return out, &apiError{msg: e.(string)}
-		}
-	}
-	return out, nil
-}
-
-func TestRouterListSaves(t *testing.T) {
-	b := testBridge(t)
-	out, ae := invoke(t, b, "GET", "/api/saves", "")
-	if ae != nil {
-		t.Fatalf("api error: %s", ae.msg)
-	}
-	saves, ok := out.([]any)
-	if !ok || len(saves) != 1 {
-		t.Fatalf("expected 1 save, got %v", out)
-	}
-	first := saves[0].(map[string]any)
-	if first["filename"] != "Save0001.sav" {
-		t.Fatalf("unexpected filename: %v", first)
+	if saves[0]["filename"] != "Save0001.sav" {
+		t.Fatalf("unexpected filename: %v", saves[0])
 	}
 }
 
-func TestRouterLoadSave(t *testing.T) {
-	b := testBridge(t)
-	out, ae := invoke(t, b, "GET", "/api/save/Save0001.sav", "")
-	if ae != nil {
-		t.Fatalf("api error: %s", ae.msg)
+func TestSavesLoadSave(t *testing.T) {
+	sv := &Saves{testBridge(t)}
+	state, err := sv.LoadSave("Save0001.sav")
+	if err != nil {
+		t.Fatalf("LoadSave: %v", err)
 	}
-	m := out.(map[string]any)
-	if m["character"] == nil || m["inventory"] == nil || m["missions"] == nil {
-		t.Fatalf("missing sections: %v", keysOf(m))
+	if state["character"] == nil || state["inventory"] == nil || state["missions"] == nil {
+		t.Fatalf("missing sections: %v", keysOf(state))
 	}
 }
 
-func TestRouterRejectsBadFilename(t *testing.T) {
-	b := testBridge(t)
-	_, ae := invoke(t, b, "GET", "/api/save/evil.sav", "")
-	if ae == nil {
+func TestSavesRejectsBadFilename(t *testing.T) {
+	sv := &Saves{testBridge(t)}
+	if _, err := sv.LoadSave("evil.sav"); err == nil {
 		t.Fatal("expected filename rejection")
 	}
-	_, ae = invoke(t, b, "DELETE", "/api/save/../../etc/passwd/delete", "")
-	if ae == nil {
+	if _, err := sv.DeleteSave("../../etc/passwd"); err == nil {
 		t.Fatal("expected path traversal rejection")
 	}
 }
 
-func TestRouterMissionDB(t *testing.T) {
-	b := testBridge(t)
-	out, ae := invoke(t, b, "GET", "/api/missions/db", "")
-	if ae != nil {
-		t.Fatalf("api error: %s", ae.msg)
+func TestEditorMissionDB(t *testing.T) {
+	ed := &Editor{testBridge(t)}
+	db, err := ed.MissionDB()
+	if err != nil {
+		t.Fatalf("MissionDB: %v", err)
 	}
-	if len(out.([]any)) == 0 {
-		t.Fatal("empty mission db")
-	}
-}
-
-func TestRouterConfigPaths(t *testing.T) {
-	b := testBridge(t)
-	out, ae := invoke(t, b, "GET", "/api/config/paths", "")
-	if ae != nil {
-		t.Fatalf("api error: %s", ae.msg)
-	}
-	m := out.(map[string]any)
-	if m["save_dir"] == "" || m["config_path"] == "" {
-		t.Fatalf("missing path fields: %v", m)
-	}
-	if !strings.Contains(m["config_path"].(string), "config.json") {
-		t.Fatalf("unexpected config_path: %v", m["config_path"])
+	missions, ok := db.([]map[string]any)
+	if !ok || len(missions) == 0 {
+		t.Fatalf("empty mission db: %T", db)
 	}
 }
 
-func TestRouterUnknownRoute(t *testing.T) {
-	b := testBridge(t)
-	_, ae := invoke(t, b, "GET", "/api/nonexistent", "")
-	if ae == nil {
-		t.Fatal("expected 404-equivalent error")
+func TestAppConfigPaths(t *testing.T) {
+	ap := &App{testBridge(t)}
+	paths := ap.ConfigPaths()
+	if paths["save_dir"] == "" || paths["config_path"] == "" {
+		t.Fatalf("missing path fields: %v", paths)
+	}
+	if cp, ok := paths["config_path"].(string); !ok || !strings.Contains(cp, "config.json") {
+		t.Fatalf("unexpected config_path: %v", paths["config_path"])
 	}
 }
 
-func TestRouterGameStatus(t *testing.T) {
-	b := testBridge(t)
-	out, ae := invoke(t, b, "GET", "/api/game-status", "")
-	if ae != nil {
-		t.Fatalf("api error: %s", ae.msg)
-	}
-	m := out.(map[string]any)
-	if _, ok := m["running"].(bool); !ok {
-		t.Fatalf("missing running flag: %v", out)
+func TestAppGameStatus(t *testing.T) {
+	ap := &App{testBridge(t)}
+	status := ap.GameStatus()
+	if _, ok := status["running"].(bool); !ok {
+		t.Fatalf("missing running flag: %v", status)
 	}
 }
 
