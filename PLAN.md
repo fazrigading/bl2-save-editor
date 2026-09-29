@@ -16,10 +16,10 @@ desktop API intentionally diverges from it.
 - [x] **Phase 1 — Backend typed services** (COMMITTED): services split,
       Invoke/dispatch/routes deleted, mutations return merged save state,
       slow-call logging, tests rewritten, `go test ./...` green.
-- [ ] **Phase 2 — Regenerate bindings**: `cd desktop && make build` (or
-      `wails dev`) regenerates `frontend/wailsjs/go/bridge/{App,Saves,Editor,Items,Assets,Steam}.{js,d.ts}`;
-      commit the regenerated files (dist is committed, `wails.json` has no
-      frontend build step).
+- [x] **Phase 2 — Regenerate bindings** (COMMITTED): `make build` regenerated
+      `frontend/wailsjs/go/bridge/{App,Saves,Editor,Items,Assets,Steam}.{js,d.ts}`
+      (wails replaced the stale Bridge.{js,d.ts} itself); `.gitignore` no longer
+      ignores `desktop/frontend/wailsjs/`, bindings + runtime wrapper committed.
 - [ ] **Phase 3 — Frontend facade + call-site migration** (79 sites: app.js 75,
       setup/index.html 3, wails_api.js 1) + `applySaveState` split.
 - [ ] **Phase 4 — UI perf fixes**: event delegation, CSS pulses, 3D dirty-flag
