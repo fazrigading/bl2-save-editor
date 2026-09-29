@@ -1,7 +1,7 @@
 // Wails first-run check, mirroring app.py's index route: whenever config.json
 // is missing (or save_dir is empty), show the setup wizard instead of the
-// editor. The transport (api()) lives in app.js itself and talks to the Go
-// bridge via window.go.bridge.Bridge.
+// editor. Talks directly to the App service via window.go.bridge.App (this
+// page loads before app.js, so the window.API facade isn't available yet).
 (function () {
     // Page stays hidden until we know which screen to show (Python renders
     // either setup.html or index.html server-side; we emulate that here).
@@ -10,7 +10,7 @@
     }
 
     function backend() {
-        return window.go && window.go.bridge ? window.go.bridge.Bridge : null;
+        return window.go && window.go.bridge ? window.go.bridge.App : null;
     }
 
     document.addEventListener("DOMContentLoaded", async function () {
@@ -31,9 +31,8 @@
             return;
         }
         try {
-            var raw = await b.Invoke("GET", "/api/configured", null);
-            var res = JSON.parse(raw);
-            if (res.configured) {
+            var configured = await b.Configured();
+            if (configured) {
                 reveal();
             } else {
                 // /setup/ is a directory page: the Wails runtime (window.go)

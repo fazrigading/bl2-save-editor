@@ -190,7 +190,7 @@
     </div>
 
     <script>
-    function bridge() { return window.go.bridge.Bridge; }
+    function bridge() { return window.go.bridge.App; }
 
     function setStatus(id, text, type) {
         var el = document.getElementById(id);
@@ -209,7 +209,7 @@
         document.getElementById("detecting").style.display = "block";
         document.getElementById("setup-form").style.display = "none";
         try {
-            var data = JSON.parse(await bridge().Invoke("GET", "/api/setup/detect", null));
+            var data = await bridge().Detect();
 
             document.getElementById("f-save-dir").value = data.save_dir || "";
             document.getElementById("f-game-dir").value = data.game_dir || "";
@@ -243,8 +243,7 @@
     async function downloadGibbed() {
         setStatus("s-gibbed-dir", "Starting download...", "warn");
         try {
-            var raw = await bridge().Invoke("POST", "/api/setup/download-gibbed", null);
-            var data = JSON.parse(raw);
+            var data = await bridge().DownloadGibbed();
             if (data.missing === 0) {
                 document.getElementById("f-gibbed-dir").value = data.dir;
                 setStatus("s-gibbed-dir", "Gibbed data already installed", "ok");
@@ -289,8 +288,7 @@
             backup_generations: parseInt(document.getElementById("f-backup-gens").value, 10) || 5,
         };
         try {
-            var raw = await bridge().Invoke("POST", "/api/setup/save", JSON.stringify(config));
-            var data = JSON.parse(raw);
+            var data = await bridge().SetupSave(config);
             if (data.ok) {
                 window.location.href = "/";
             } else {
@@ -307,7 +305,7 @@
         return new Promise(function (resolve) {
             var tries = 0;
             (function check() {
-                if (window.go && window.go.bridge && window.go.bridge.Bridge) return resolve();
+                if (window.go && window.go.bridge && window.go.bridge.App) return resolve();
                 if (++tries > 100) return resolve();
                 setTimeout(check, 50);
             })();

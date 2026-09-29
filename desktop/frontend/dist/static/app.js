@@ -272,35 +272,8 @@ function getCharSVG(name) { return CHARACTER_SVGS[name] || CHARACTER_SVGS.Axton;
 
 // ─── Helpers ────────────────────────────────────────────────
 
-async function api(url, opts = {}) {
-    const method = (opts.method || "GET").toUpperCase();
-    let body = null;
-    if (opts.body != null) {
-        body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
-    }
-    let raw;
-    try {
-        raw = await window.go.bridge.Bridge.Invoke(method, url, body);
-    } catch (err) {
-        const msg = (err && err.message) ? err.message : String(err);
-        toast(msg, "error");
-        throw new Error(msg);
-    }
-    let json;
-    try {
-        json = JSON.parse(raw);
-    } catch (e) {
-        const msg = "Backend returned non-JSON response";
-        toast(msg, "error");
-        throw new Error(msg);
-    }
-    if (json && json.error) {
-        const msg = json.error;
-        toast(msg, "error");
-        throw new Error(msg);
-    }
-    return json;
-}
+// Bridge calls go through window.API (static/api.js): typed Wails services
+// wrapped with [perf] logging and error toasting.
 
 function toast(msg, type = "success") {
     const t = document.getElementById("toast");
@@ -749,7 +722,7 @@ function updatePowerEstimate() {
 
 async function loadSaveList() {
     try {
-        const saves = await api("/api/saves");
+        const saves = await API.listSaves();
         const list = document.getElementById("save-list");
         list.innerHTML = "";
         if (!saves.length) {
@@ -760,15 +733,15 @@ async function loadSaveList() {
                     <button class="btn-secondary save-empty-btn" id="btn-empty-setup">Re-run Setup</button>
                     <button class="btn-secondary save-empty-btn" id="btn-empty-open">Open Save Folder</button>
                 </div>`;
-            api("/api/config/paths").then(paths => {
+            API.configPaths().then(paths => {
                 const el = document.getElementById("empty-save-dir");
                 if (el) el.textContent = paths.save_dir || "(not configured)";
             }).catch(() => {});
             document.getElementById("btn-empty-setup").addEventListener("click", () => location.replace("/setup/"));
             document.getElementById("btn-empty-open").addEventListener("click", async () => {
                 try {
-                    const paths = await api("/api/config/paths");
-                    await window.go.bridge.Bridge.OpenPath(paths.save_dir);
+                    const paths = await API.configPaths();
+                    await window.go.bridge.App.OpenPath(paths.save_dir);
                 } catch (err) { toast("Error: " + err.message, "error"); }
             });
             return;
@@ -797,7 +770,7 @@ async function loadSaveList() {
                 e.stopPropagation();
                 var file = this.dataset.file;
                 try {
-                    var res = await api("/api/save/" + file + "/duplicate", { method: "POST" });
+                    var res = await API.duplicateSave(file);
                     toast("Duplicated to " + res.new_filename);
                     await loadSaveList();
                 } catch (err) { toast("Error: " + err.message, "error"); }
@@ -810,7 +783,7 @@ async function loadSaveList() {
                 var file = this.dataset.file;
                 if (!confirm('Delete save "' + file + '"? (A .deleted backup will be kept)')) return;
                 try {
-                    await api("/api/save/" + file + "/delete", { method: "DELETE" });
+                    await API.deleteSave(file);
                     toast("Deleted " + file);
                     if (currentFile === file) {
                         currentFile = null;
@@ -829,7 +802,7 @@ async function loadSaveList() {
             });
         });
         // Project Paris Bug 4: single batch call instead of N full-parse calls
-        api("/api/saves/previews").then(previews => {
+        API.savePreviews().then(previews => {
             for (const s of saves) {
                 const safeId = s.filename.replace(/\./g, "-");
                 const el = document.getElementById("sinfo-" + safeId);
@@ -850,7 +823,7 @@ async function showBackups(filename) {
     modal.classList.remove("hidden");
     listEl.innerHTML = '<div style="color:var(--text-dim);font-size:12px">Loading...</div>';
     try {
-        var res = await api("/api/save/" + filename + "/backups");
+        var res = await API.listBackups(filename);
         if (!res.backups || !res.backups.length) {
             listEl.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:12px">No backups available for this save.</div>';
             return;
@@ -873,9 +846,7 @@ async function showBackups(filename) {
                 var gen = parseInt(this.dataset.gen);
                 if (!confirm("Restore this backup? Your current save will be backed up first.")) return;
                 try {
-                    await api("/api/save/" + file + "/backups/restore", {
-                        method: "POST", body: { generation: gen }
-                    });
+                    await API.restoreBackup(file, { generation: gen });
                     toast("Restored from backup");
                     modal.classList.add("hidden");
                     if (currentFile === file) await loadSave(file);
@@ -892,7 +863,7 @@ async function showBackups(filename) {
 
 async function checkGameRunning() {
     try {
-        const status = await api("/api/game-status");
+        const status = await API.gameStatus();
         const banner = document.getElementById("game-warning");
         if (status.running) {
             if (!banner) {
@@ -916,27 +887,34 @@ async function loadSave(filename) {
     currentFile = filename;
     showLoading(true);
     try {
-        currentData = await api("/api/save/" + filename);
-        document.getElementById("no-save-msg").classList.add("hidden");
-        document.getElementById("editor").classList.remove("hidden");
-        document.getElementById("weapon-preview").classList.add("hidden");
-        // Bug 23: destroy preview viewer to stop orphaned animation frame loop
-        if (typeof destroyPreviewViewer === "function") destroyPreviewViewer();
-        renderCharacter(currentData.character);
-        renderEquipment(currentData);
-        renderInventory(currentData.inventory);
-        renderMissions(currentData.missions);
-        await renderFastTravel(currentData.fast_travel);
-        renderChallenges(currentData.challenges);
-        // Mark active in sidebar
-        document.querySelectorAll(".save-item").forEach(el => {
-            el.classList.toggle("active", el.querySelector(".save-name").textContent === filename);
-        });
+        currentData = await API.loadSave(filename);
+        await applySaveState(currentData);
     } catch (e) {
         toast("Failed to load save: " + e.message, "error");
         console.error(e);
     }
     showLoading(false);
+}
+
+// Render the whole editor from a save-state payload. Mutations return the
+// same shape merged with their result, so they assign currentData and call
+// this directly instead of re-fetching via loadSave.
+async function applySaveState(data) {
+    document.getElementById("no-save-msg").classList.add("hidden");
+    document.getElementById("editor").classList.remove("hidden");
+    document.getElementById("weapon-preview").classList.add("hidden");
+    // Bug 23: destroy preview viewer to stop orphaned animation frame loop
+    if (typeof destroyPreviewViewer === "function") destroyPreviewViewer();
+    renderCharacter(data.character);
+    renderEquipment(data);
+    renderInventory(data.inventory);
+    renderMissions(data.missions);
+    await renderFastTravel(data.fast_travel);
+    renderChallenges(data.challenges);
+    // Mark active in sidebar
+    document.querySelectorAll(".save-item").forEach(el => {
+        el.classList.toggle("active", el.querySelector(".save-name").textContent === currentFile);
+    });
 }
 
 // ─── Character ──────────────────────────────────────────────
@@ -1433,12 +1411,11 @@ document.getElementById("btn-save-skills").addEventListener("click", async funct
     var status = document.getElementById("skill-save-status");
     status.textContent = "Saving...";
     try {
-        var res = await api("/api/save/" + currentFile + "/skills", {
-            method: "POST", body: { skills: _skillEdits }
-        });
-        toast("Skills updated (" + res.count + " changed)");
+        var st = await API.setSkills(currentFile, { skills: _skillEdits });
+        toast("Skills updated (" + st.count + " changed)");
         _skillEdits = {};
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
         status.textContent = "Saved!";
         setTimeout(function() { status.textContent = ""; }, 2000);
     } catch (e) {
@@ -1474,13 +1451,12 @@ document.getElementById("btn-reset-skills").addEventListener("click", async func
 
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/skills", {
-            method: "POST", body: { skills: resets }
-        });
+        var st = await API.setSkills(currentFile, { skills: resets });
         toast("All skills reset");
         _skillEdits = {};
-        await loadSave(currentFile);
-    } catch (e) { /* handled by api() */ }
+        currentData = st;
+        await applySaveState(st);
+    } catch (e) { /* handled by API facade */ }
     _mutating = false;
 });
 
@@ -1513,9 +1489,7 @@ document.getElementById("btn-save-char").addEventListener("click", async () => {
             ammoInputs.forEach(function(inp) { ammo[inp.dataset.ammo] = parseInt(inp.value) || 0; });
             charBody.ammo = ammo;
         }
-        const r = await api("/api/save/" + currentFile + "/character", {
-            method: "POST", body: charBody,
-        });
+        const r = await API.updateCharacter(currentFile, charBody);
         renderCharacter(r);
         status.textContent = "SAVED";
         status.style.color = "var(--green)";
@@ -1943,7 +1917,7 @@ async function openWeaponEditor(item) {
     var balancePath = r.balance_path || "";
     if (isWeapon && balancePath) {
         try {
-            compatParts = await api("/api/assets/parts?balance=" + encodeURIComponent(balancePath));
+            compatParts = await API.parts(balancePath);
         } catch (e) { /* fall back to no compatibility data */ }
     }
 
@@ -2060,7 +2034,7 @@ async function openWeaponEditor(item) {
     var apiSlots = slots.map(function(slot) {
         return isWeapon ? slot : (slotConfig.apiSlotNames ? slotConfig.apiSlotNames[slot] : slot);
     });
-    api("/api/assets/all-parts-batch?kind=" + apiKind + "&slots=" + encodeURIComponent(apiSlots.join(",")))
+    API.allPartsBatch(apiKind, apiSlots.join(","))
         .then(function(allParts) {
             for (var si = 0; si < slots.length; si++) {
                 var slot = slots[si];
@@ -2122,15 +2096,13 @@ document.getElementById("btn-edit-submit").addEventListener("click", async () =>
     if (gradeIndex !== origGi) payload.grade_index = gradeIndex;
 
     try {
-        await api("/api/save/" + currentFile + "/items/" + field + "/" + index + "/edit", {
-            method: "POST",
-            body: payload,
-        });
+        var st = await API.editItem(currentFile, field, index, payload);
         hideModal("modal-edit");
-        // Verify the edit by reloading and checking item count
+        // Verify the edit by checking item count in the merged state
         var before = currentData ? (currentData.inventory.weapons.length + currentData.inventory.items.length) : 0;
-        await loadSave(currentFile);
-        var after = currentData ? (currentData.inventory.weapons.length + currentData.inventory.items.length) : 0;
+        currentData = st;
+        var after = currentData.inventory.weapons.length + currentData.inventory.items.length;
+        await applySaveState(st);
         if (before > 0 && after < before) {
             toast("WARNING: Item count dropped from " + before + " to " + after + "! Check server log.");
         } else {
@@ -2246,11 +2218,10 @@ function renderItemList(containerId, items) {
                 if (src.field !== dst.field || src.index === dst.index) return;
                 if (_mutating) return;  // Bug 21: prevent overlapping mutations
                 _mutating = true;
-                await api("/api/save/" + currentFile + "/items/" + src.field + "/reorder", {
-                    method: "POST", body: { from: src.index, to: dst.index }
-                });
-                await loadSave(currentFile);
-            } catch (err) { /* handled by api() */ }
+                var st = await API.reorderItem(currentFile, src.field, { from: src.index, to: dst.index });
+                currentData = st;
+                await applySaveState(st);
+            } catch (err) { /* handled by API facade */ }
             _mutating = false;  // Bug 22: must reset outside try — error left flag stuck
         });
         container.appendChild(card);
@@ -2349,11 +2320,12 @@ async function deleteItem(field, index) {
     if (!confirm("Delete this item?")) return;
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/items/" + field + "/" + index, { method: "DELETE" });
+        var st = await API.deleteItem(currentFile, field, index);
         toast("Item deleted");
         document.getElementById("weapon-preview").classList.add("hidden");
-        await loadSave(currentFile);
-    } catch (e) { /* error toast handled by api() */ }
+        currentData = st;
+        await applySaveState(st);
+    } catch (e) { /* error toast handled by API facade */ }
     _mutating = false;
 }
 
@@ -2361,10 +2333,11 @@ async function duplicateItem(field, index) {
     if (_mutating) return;  // Bug 21: prevent overlapping mutations
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/items/" + field + "/" + index + "/duplicate", { method: "POST" });
+        var st = await API.duplicateItem(currentFile, field, index);
         toast("Item duplicated");
-        await loadSave(currentFile);
-    } catch (e) { /* error toast handled by api() */ }
+        currentData = st;
+        await applySaveState(st);
+    } catch (e) { /* error toast handled by API facade */ }
     _mutating = false;
 }
 
@@ -2396,12 +2369,11 @@ document.getElementById("btn-bulk-submit").addEventListener("click", async funct
     hideModal("modal-bulk-level");
     showLoading(true);
     try {
-        var res = await api("/api/save/" + currentFile + "/items/" + field + "/bulk-level", {
-            method: "POST", body: { level: lv }
-        });
-        toast(res.count + " " + tabName + " set to level " + lv);
-        await loadSave(currentFile);
-    } catch (e) { /* error toast handled by api() */ }
+        var st = await API.bulkLevel(currentFile, field, { level: lv });
+        toast(st.count + " " + tabName + " set to level " + lv);
+        currentData = st;
+        await applySaveState(st);
+    } catch (e) { /* error toast handled by API facade */ }
     showLoading(false);
     _mutating = false;
 });
@@ -2427,11 +2399,9 @@ document.getElementById("btn-save-loadout-submit").addEventListener("click", asy
     hideModal("modal-save-loadout");
     showLoading(true);
     try {
-        var res = await api("/api/loadouts/save", {
-            method: "POST", body: { filename: currentFile, name: name }
-        });
+        var res = await API.saveLoadout({ filename: currentFile, name: name });
         toast("Loadout saved: " + res.weapons + " weapons, " + res.items + " items");
-    } catch (e) { /* handled by api() */ }
+    } catch (e) { /* handled by API facade */ }
     showLoading(false);
     _mutating = false;
 });
@@ -2442,7 +2412,7 @@ document.getElementById("btn-load-loadout").addEventListener("click", async func
     var list = document.getElementById("loadout-list");
     list.innerHTML = '<div style="color:var(--text-dim);font-size:12px">Loading...</div>';
     try {
-        var loadouts = await api("/api/loadouts");
+        var loadouts = await API.listLoadouts();
         if (!loadouts.length) {
             list.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No saved loadouts. Use SAVE LOADOUT to create one.</div>';
             return;
@@ -2472,12 +2442,11 @@ document.getElementById("btn-load-loadout").addEventListener("click", async func
                 hideModal("modal-load-loadout");
                 showLoading(true);
                 try {
-                    var res = await api("/api/loadouts/" + encodeURIComponent(file) + "/restore", {
-                        method: "POST", body: { filename: currentFile, replace: replace }
-                    });
-                    toast("Loadout loaded: " + res.imported + " items imported");
-                    await loadSave(currentFile);
-                } catch (e) { /* handled by api() */ }
+                    var st = await API.restoreLoadout(currentFile, file, { replace: replace });
+                    toast("Loadout loaded: " + st.imported + " items imported");
+                    currentData = st;
+                    await applySaveState(st);
+                } catch (e) { /* handled by API facade */ }
                 showLoading(false);
                 _mutating = false;
             });
@@ -2487,13 +2456,13 @@ document.getElementById("btn-load-loadout").addEventListener("click", async func
                 if (!confirm("Delete this loadout?")) return;
                 var file = this.dataset.file;
                 try {
-                    await api("/api/loadouts/" + encodeURIComponent(file), { method: "DELETE" });
+                    await API.deleteLoadout(file);
                     this.closest(".loadout-row").remove();
                     toast("Loadout deleted");
                     if (!list.querySelector(".loadout-row")) {
                         list.innerHTML = '<div style="color:var(--text-dim);font-size:12px">No saved loadouts.</div>';
                     }
-                } catch (e) { /* handled by api() */ }
+                } catch (e) { /* handled by API facade */ }
             });
         });
     } catch (e) {
@@ -2512,19 +2481,21 @@ document.getElementById("btn-level-submit").addEventListener("click", async () =
     if (_mutating) return;  // BUG-P48: prevent double-click
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/items/" + document.getElementById("edit-field").value + "/" + document.getElementById("edit-index").value + "/level", {
-            method: "POST", body: { level: parseInt(document.getElementById("edit-level").value) },
-        });
+        var st = await API.setItemLevel(currentFile,
+            parseInt(document.getElementById("edit-field").value),
+            parseInt(document.getElementById("edit-index").value),
+            { level: parseInt(document.getElementById("edit-level").value) });
         hideModal("modal-level");
         toast("Level updated!");
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
     } catch (e) { toast("Error: " + e.message); }
     _mutating = false;
 });
 
 async function exportItem(field, index) {
     try {
-        const data = await api("/api/save/" + currentFile + "/export/" + field + "/" + index);
+        const data = await API.exportCode(currentFile, field, index);
         document.getElementById("export-codes").value = data.code;
         showModal("modal-export");
     } catch (e) { toast("Error: " + e.message); }
@@ -2575,12 +2546,11 @@ async function transferItem(field, index, toField) {
     if (_mutating) return;
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/items/" + field + "/" + index + "/transfer", {
-            method: "POST", body: { to_field: toField }
-        });
+        var st = await API.transferItem(currentFile, field, index, { to_field: toField });
         var labels = { 54: "weapons", 53: "backpack", 41: "bank" };
         toast("Moved to " + (labels[toField] || "inventory"));
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 }
@@ -2640,7 +2610,7 @@ document.addEventListener("contextmenu", e => {
 
 document.getElementById("btn-export-all").addEventListener("click", async () => {
     try {
-        const s = await api("/api/save/" + currentFile + "/export-all");
+        const s = await API.exportAll(currentFile);
         let t = "";
         if (s.weapons && s.weapons.length) t += "; Weapons\n" + s.weapons.join("\n") + "\n";
         if (s.items && s.items.length) t += "; Items\n" + s.items.join("\n") + "\n";
@@ -2666,7 +2636,7 @@ document.getElementById("btn-import-preview").addEventListener("click", async ()
     preview.innerHTML = '<div style="opacity:0.5">Loading preview...</div>';
     preview.classList.remove("hidden");
     try {
-        const items = await api("/api/preview-codes", { method: "POST", body: { codes } });
+        const items = await API.previewCodes({ codes: codes });
         if (!items.length) { preview.innerHTML = '<div style="color:#ff4444">No valid codes found</div>'; return; }
         let html = '<div class="preview-header">' + items.filter(i => !i.error).length + ' valid, ' + items.filter(i => i.error).length + ' invalid</div>';
         for (const item of items) {
@@ -2688,18 +2658,19 @@ document.getElementById("btn-import-submit").addEventListener("click", async () 
     const codes = document.getElementById("import-codes").value;
     if (!codes.trim()) return;
     try {
-        const r = await api("/api/save/" + currentFile + "/import", { method: "POST", body: { codes } });
+        const st = await API.importCodes(currentFile, { codes: codes });
         hideModal("modal-import");
         document.getElementById("import-codes").value = "";
         document.getElementById("import-preview").classList.add("hidden");
-        let msg = "Imported " + r.imported + " item(s)";
-        if (r.errors && r.errors.length > 0) {
-            msg += " (" + r.errors.length + " skipped)";
-            console.warn("Import errors:", r.errors);
+        let msg = "Imported " + st.imported + " item(s)";
+        if (st.errors && st.errors.length > 0) {
+            msg += " (" + st.errors.length + " skipped)";
+            console.warn("Import errors:", st.errors);
         }
         toast(msg);
-        await loadSave(currentFile);
-    } catch (e) { /* error toast handled by api() */ }
+        currentData = st;
+        await applySaveState(st);
+    } catch (e) { /* error toast handled by API facade */ }
 });
 
 // ─── Add Weapon ─────────────────────────────────────────────
@@ -2719,7 +2690,7 @@ function extractMfrFromPath(path) {
 document.getElementById("btn-add-weapon").addEventListener("click", async () => {
     showModal("modal-add");
     const cat = document.getElementById("add-category");
-    if (!weaponTypes) weaponTypes = await api("/api/assets/weapon-types");
+    if (!weaponTypes) weaponTypes = await API.weaponTypes();
     cat.innerHTML = '<option value="">-- Select Weapon Type --</option>';
     const grouped = {};
     for (const [p, info] of Object.entries(weaponTypes)) {
@@ -2755,7 +2726,7 @@ document.getElementById("add-category").addEventListener("change", async () => {
     if (!catPath) { bal.innerHTML = '<option value="">-- Select category --</option>'; return; }
     bal.innerHTML = '<option value="">Loading...</option>';
     try {
-        const bals = await api("/api/assets/balances?type=" + encodeURIComponent(catPath));
+        const bals = await API.balances(catPath);
         bal.innerHTML = '<option value="">-- Select --</option>';
         for (const b of bals) {
             const opt = document.createElement("option");
@@ -2774,7 +2745,7 @@ document.getElementById("add-balance").addEventListener("change", async () => {
     document.getElementById("btn-add-submit").disabled = !bp;
     if (!bp) { ps.classList.add("hidden"); return; }
     try {
-        const parts = await api("/api/assets/parts?balance=" + encodeURIComponent(bp));
+        const parts = await API.parts(bp);
         pg.innerHTML = "";
         for (const slot of ["body", "grip", "barrel", "sight", "stock", "elemental", "accessory1", "accessory2", "material"]) {
             const opts = parts[slot] || [];
@@ -2802,13 +2773,13 @@ document.getElementById("btn-add-submit").addEventListener("click", async () => 
         if (sel && sel.value) parts[s] = sel.value;
     }
     try {
-        await api("/api/save/" + currentFile + "/items/add", {
-            method: "POST",
-            body: { balance: document.getElementById("add-balance").value, level: parseInt(document.getElementById("add-level").value) || 1, parts },
+        var st = await API.addWeapon(currentFile, {
+            balance: document.getElementById("add-balance").value, level: parseInt(document.getElementById("add-level").value) || 1, parts,
         });
         hideModal("modal-add");
         toast("Weapon added!");
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
     } catch (e) { toast("Error: " + e.message); }
     _mutating = false;
 });
@@ -2820,7 +2791,7 @@ var _itemCategories = null;
 document.getElementById("btn-add-item").addEventListener("click", async () => {
     showModal("modal-add-item");
     var cat = document.getElementById("add-item-category");
-    if (!_itemCategories) _itemCategories = await api("/api/assets/item-categories");
+    if (!_itemCategories) _itemCategories = await API.itemCategories();
     cat.innerHTML = '<option value="">-- Select Item Type --</option>';
     for (var c of _itemCategories) {
         var opt = document.createElement("option");
@@ -2839,7 +2810,7 @@ document.getElementById("add-item-category").addEventListener("change", async ()
     if (!catKey) { bal.innerHTML = '<option value="">-- Select category --</option>'; return; }
     bal.innerHTML = '<option value="">Loading...</option>';
     try {
-        var bals = await api("/api/assets/item-balances?category=" + encodeURIComponent(catKey));
+        var bals = await API.itemBalances(catKey);
         bal.innerHTML = '<option value="">-- Select --</option>';
         for (var b of bals) {
             var opt = document.createElement("option");
@@ -2858,7 +2829,7 @@ document.getElementById("add-item-balance").addEventListener("change", async () 
     document.getElementById("btn-add-item-submit").disabled = !bp;
     if (!bp) { ps.classList.add("hidden"); return; }
     try {
-        var parts = await api("/api/assets/item-parts?balance=" + encodeURIComponent(bp));
+        var parts = await API.itemParts(bp);
         pg.innerHTML = "";
         for (var slot in parts) {
             var opts = parts[slot];
@@ -2894,13 +2865,13 @@ document.getElementById("btn-add-item-submit").addEventListener("click", async (
         }
     });
     try {
-        await api("/api/save/" + currentFile + "/items/add-item", {
-            method: "POST",
-            body: { balance: document.getElementById("add-item-balance").value, level: parseInt(document.getElementById("add-item-level").value) || 1, parts: parts },
+        var st = await API.addItem(currentFile, {
+            balance: document.getElementById("add-item-balance").value, level: parseInt(document.getElementById("add-item-level").value) || 1, parts: parts,
         });
         hideModal("modal-add-item");
         toast("Item added!");
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -2938,7 +2909,7 @@ document.getElementById("btn-open-customize").addEventListener("click", async ()
     skinSel.innerHTML = '<option value="">Loading...</option>';
 
     try {
-        var data = await api("/api/assets/customizations/" + encodeURIComponent(c.class_name));
+        var data = await API.customizations(c.class_name);
         _custHeads = data.heads || [];
         _custSkins = data.skins || [];
 
@@ -3184,9 +3155,7 @@ document.getElementById("btn-cust-submit").addEventListener("click", async () =>
         var body = { appearance_colors: colors };
         if (headPath) body.head_asset = headPath;
         if (skinPath) body.skin_asset = skinPath;
-        var r = await api("/api/save/" + currentFile + "/character", {
-            method: "POST", body: body
-        });
+        var r = await API.updateCharacter(currentFile, body);
         hideModal("modal-customize");
         toast("Customization applied!");
         await loadSave(currentFile);
@@ -3200,12 +3169,17 @@ var _currentMissionPt = 0;
 
 async function loadMissionDb() {
     if (_missionDb) return _missionDb;
-    _missionDb = await api("/api/missions/db");
+    _missionDb = await API.missionDb();
     return _missionDb;
 }
 
-async function _reloadMissionsTab(pt) {
-    await loadSave(currentFile);
+async function _reloadMissionsTab(pt, st) {
+    if (st) {
+        currentData = st;
+        await applySaveState(st);
+    } else {
+        await loadSave(currentFile);
+    }
     document.querySelector('.main-tab[data-mtab="missions"]').click();
     document.getElementById("mission-playthrough").value = pt;
     document.getElementById("mission-playthrough").dispatchEvent(new Event("change"));
@@ -3281,10 +3255,8 @@ function renderMissions(data) {
                 var mission = this.dataset.mission;
                 var status = parseInt(this.dataset.toggle);
                 try {
-                    await api("/api/save/" + currentFile + "/missions/" + pt + "/" + mission, {
-                        method: "POST", body: { status: status }
-                    });
-                    await _reloadMissionsTab(pt);
+                    var st = await API.setMissionStatus(currentFile, pt, mission, { status: status });
+                    await _reloadMissionsTab(pt, st);
                 } catch (e) { toast("Error: " + e.message, "error"); }
             });
         });
@@ -3295,11 +3267,9 @@ function renderMissions(data) {
                 var pt = parseInt(this.dataset.pt);
                 var mission = this.dataset.mission;
                 try {
-                    await api("/api/save/" + currentFile + "/missions/" + pt + "/set-active", {
-                        method: "POST", body: { mission: mission }
-                    });
+                    var st = await API.setActiveMission(currentFile, pt, { mission: mission });
                     toast("Now tracking: " + mission.split(".").pop());
-                    await _reloadMissionsTab(pt);
+                    await _reloadMissionsTab(pt, st);
                 } catch (e) { toast("Error: " + e.message, "error"); }
             });
         });
@@ -3312,11 +3282,9 @@ function renderMissions(data) {
                 var display = this.dataset.display;
                 if (!confirm('Remove mission "' + display + '"?')) return;
                 try {
-                    await api("/api/save/" + currentFile + "/missions/" + pt + "/remove", {
-                        method: "POST", body: { mission: mission }
-                    });
+                    var st = await API.removeMission(currentFile, pt, { mission: mission });
                     toast("Removed: " + display);
-                    await _reloadMissionsTab(pt);
+                    await _reloadMissionsTab(pt, st);
                 } catch (e) { toast("Error: " + e.message, "error"); }
             });
         });
@@ -3336,11 +3304,9 @@ document.getElementById("btn-complete-all-missions").addEventListener("click", a
     if (!confirm("Mark all missions in this playthrough as complete?")) return;
     _mutating = true;
     try {
-        var res = await api("/api/save/" + currentFile + "/missions/" + pt + "/complete-all", {
-            method: "POST"
-        });
-        toast("Completed " + res.count + " missions");
-        await _reloadMissionsTab(pt);
+        var st = await API.completeAllMissions(currentFile, pt);
+        toast("Completed " + st.count + " missions");
+        await _reloadMissionsTab(pt, st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3352,11 +3318,9 @@ document.getElementById("btn-add-all-story").addEventListener("click", async fun
     if (!confirm("Add all story missions (as Active) to this playthrough?")) return;
     _mutating = true;
     try {
-        var res = await api("/api/save/" + currentFile + "/missions/" + pt + "/add-all-story", {
-            method: "POST", body: { status: 1 }
-        });
-        toast("Added " + res.count + " story missions");
-        await _reloadMissionsTab(pt);
+        var st = await API.addAllStory(currentFile, pt, { status: 1 });
+        toast("Added " + st.count + " story missions");
+        await _reloadMissionsTab(pt, st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3365,11 +3329,9 @@ document.getElementById("btn-unlock-tvhm").addEventListener("click", async funct
     if (!currentFile || _mutating) return;
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/playthrough", {
-            method: "POST", body: { action: "unlock_tvhm" }
-        });
+        var st = await API.playthrough(currentFile, { action: "unlock_tvhm" });
         toast("TVHM unlocked");
-        await _reloadMissionsTab(_currentMissionPt);
+        await _reloadMissionsTab(_currentMissionPt, st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3378,11 +3340,9 @@ document.getElementById("btn-unlock-uvhm").addEventListener("click", async funct
     if (!currentFile || _mutating) return;
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/playthrough", {
-            method: "POST", body: { action: "unlock_uvhm" }
-        });
+        var st = await API.playthrough(currentFile, { action: "unlock_uvhm" });
         toast("UVHM unlocked");
-        await _reloadMissionsTab(_currentMissionPt);
+        await _reloadMissionsTab(_currentMissionPt, st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3416,12 +3376,10 @@ document.getElementById("btn-add-mission-submit").addEventListener("click", asyn
     if (!mission) { toast("Select a mission", "error"); return; }
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/missions/" + _currentMissionPt + "/add", {
-            method: "POST", body: { mission: mission, status: status, level: level }
-        });
+        var st = await API.addMission(currentFile, _currentMissionPt, { mission: mission, status: status, level: level });
         hideModal("modal-add-mission");
         toast("Mission added");
-        await _reloadMissionsTab(_currentMissionPt);
+        await _reloadMissionsTab(_currentMissionPt, st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3433,7 +3391,7 @@ var _allStations = null;
 
 async function loadAllStations() {
     if (_allStations) return _allStations;
-    _allStations = await api("/api/fast-travel/all-stations");
+    _allStations = await API.allStations();
     return _allStations;
 }
 
@@ -3507,13 +3465,12 @@ document.getElementById("btn-save-ft").addEventListener("click", async function(
     var status = document.getElementById("ft-status");
     status.textContent = "Saving...";
     try {
-        await api("/api/save/" + currentFile + "/fast-travel", {
-            method: "POST", body: { stations: stations }
-        });
+        var st = await API.updateFastTravel(currentFile, { stations: stations });
         toast("Fast travel stations updated");
         status.textContent = "Saved!";
         setTimeout(function() { status.textContent = ""; }, 2000);
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
         document.querySelector('.main-tab[data-mtab="fasttravel"]').click();
     } catch (e) {
         toast("Error: " + e.message, "error");
@@ -3527,11 +3484,10 @@ document.getElementById("btn-unlock-all-ft").addEventListener("click", async fun
     if (_mutating) return;
     _mutating = true;
     try {
-        var res = await api("/api/save/" + currentFile + "/fast-travel/unlock-all", {
-            method: "POST"
-        });
-        toast("Unlocked " + res.added + " new stations");
-        await loadSave(currentFile);
+        var st = await API.unlockAllFastTravel(currentFile);
+        toast("Unlocked " + st.added + " new stations");
+        currentData = st;
+        await applySaveState(st);
         document.querySelector('.main-tab[data-mtab="fasttravel"]').click();
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
@@ -3543,11 +3499,10 @@ document.getElementById("btn-lock-all-ft").addEventListener("click", async funct
     if (!confirm("Lock all fast travel stations?")) return;
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/fast-travel", {
-            method: "POST", body: { stations: [] }
-        });
+        var st = await API.updateFastTravel(currentFile, { stations: [] });
         toast("All stations locked");
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
         document.querySelector('.main-tab[data-mtab="fasttravel"]').click();
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
@@ -3560,10 +3515,10 @@ document.getElementById("btn-fill-ammo").addEventListener("click", async functio
     if (_mutating) return;
     _mutating = true;
     try {
-        await api("/api/save/" + currentFile + "/ammo/fill", { method: "POST" });
+        var st = await API.fillAmmo(currentFile);
         toast("Ammo filled to max");
-        var r = await api("/api/save/" + currentFile);
-        if (r.character) renderCharacter(r.character);
+        currentData = st;
+        await applySaveState(st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3575,14 +3530,15 @@ document.getElementById("btn-unlock-achievements").addEventListener("click", asy
     if (!confirm("This will max your level, complete all story missions, complete all challenges, and unlock all fast travel. Continue?")) return;
     _mutating = true;
     try {
-        var res = await api("/api/save/" + currentFile + "/unlock-achievements", { method: "POST" });
+        var st = await API.unlockAchievements(currentFile);
         var parts = [];
-        if (res.level) parts.push("Level " + res.level);
-        if (res.missions_completed) parts.push(res.missions_completed + " missions");
-        if (res.challenges_completed) parts.push(res.challenges_completed + " challenges");
-        if (res.stations_unlocked) parts.push(res.stations_unlocked + " stations");
+        if (st.level) parts.push("Level " + st.level);
+        if (st.missions_completed) parts.push(st.missions_completed + " missions");
+        if (st.challenges_completed) parts.push(st.challenges_completed + " challenges");
+        if (st.stations_unlocked) parts.push(st.stations_unlocked + " stations");
         toast("Achievements unlocked: " + parts.join(", "));
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3645,10 +3601,10 @@ document.getElementById("btn-complete-all-challenges").addEventListener("click",
     if (!confirm("Complete all challenges?")) return;
     _mutating = true;
     try {
-        var res = await api("/api/save/" + currentFile + "/challenges/complete-all", { method: "POST" });
-        toast("Completed " + res.count + " challenges");
-        var data = await api("/api/save/" + currentFile + "/challenges");
-        renderChallenges(data);
+        var st = await API.completeAllChallenges(currentFile);
+        toast("Completed " + st.count + " challenges");
+        currentData = st;
+        renderChallenges(st.challenges);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3659,10 +3615,10 @@ document.getElementById("btn-reset-all-challenges").addEventListener("click", as
     if (!confirm("Reset all challenges to zero?")) return;
     _mutating = true;
     try {
-        var res = await api("/api/save/" + currentFile + "/challenges/reset-all", { method: "POST" });
-        toast("Reset " + res.count + " challenges");
-        var data = await api("/api/save/" + currentFile + "/challenges");
-        renderChallenges(data);
+        var st = await API.resetAllChallenges(currentFile);
+        toast("Reset " + st.count + " challenges");
+        currentData = st;
+        renderChallenges(st.challenges);
     } catch (e) { toast("Error: " + e.message, "error"); }
     _mutating = false;
 });
@@ -3674,7 +3630,7 @@ var _steamReady = false;
 
 async function initSteam() {
     try {
-        var res = await api("/api/steam/init", { method: "POST" });
+        var res = await API.steamInit();
         _steamReady = res.ok;
         _updateSteamStatusUI(res.ok, res.ok ? null : res.message);
     } catch (e) {
@@ -3709,7 +3665,7 @@ function startSteamHealthCheck() {
     _steamHealthInterval = setInterval(async function() {
         if (!_steamReady) return;
         try {
-            var status = await api("/api/steam/status");
+            var status = await API.steamStatus();
             if (!status.healthy) {
                 _steamReady = false;
                 _updateSteamStatusUI(false, "connection lost");
@@ -3725,7 +3681,7 @@ function stopSteamHealthCheck() {
 
 async function loadAchievements() {
     try {
-        _achievementsData = await api("/api/steam/achievements");
+        _achievementsData = await API.steamAchievements();
         renderAchievements(_achievementsData);
     } catch (e) { toast("Error loading achievements: " + e.message, "error"); }
 }
@@ -3805,11 +3761,12 @@ document.getElementById("btn-unlock-all-ach").addEventListener("click", async fu
     _mutating = true;
     document.getElementById("ach-status").textContent = "Writing achievement state...";
     try {
-        await api("/api/save/" + currentFile + "/unlock-achievements", { method: "POST" });
+        var st = await API.unlockAchievements(currentFile);
         toast("Achievement state written to " + currentFile);
         document.getElementById("ach-status").textContent = "Save state updated";
         setTimeout(function() { document.getElementById("ach-status").textContent = ""; }, 3000);
-        await loadSave(currentFile);
+        currentData = st;
+        await applySaveState(st);
     } catch (e) { toast("Error: " + e.message, "error"); document.getElementById("ach-status").textContent = ""; }
     _mutating = false;
 });
