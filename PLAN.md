@@ -20,8 +20,15 @@ desktop API intentionally diverges from it.
       `frontend/wailsjs/go/bridge/{App,Saves,Editor,Items,Assets,Steam}.{js,d.ts}`
       (wails replaced the stale Bridge.{js,d.ts} itself); `.gitignore` no longer
       ignores `desktop/frontend/wailsjs/`, bindings + runtime wrapper committed.
-- [ ] **Phase 3 — Frontend facade + call-site migration** (79 sites: app.js 75,
-      setup/index.html 3, wails_api.js 1) + `applySaveState` split.
+- [x] **Phase 3 — Frontend facade + call-site migration** (COMMITTED): new
+      `dist/static/api.js` (`window.API`, 66 facade methods over the six
+      services, [perf] timing + error toasting); all 61 `await api()` app.js
+      sites migrated (plan's "75" counted comments too), setup ×3 + waitForBridge,
+      wails_api.js Configured; old `api()` deleted; `loadSave` split into
+      `applySaveState` (mutations render merged state, single round trip);
+      `_reloadMissionsTab(pt, st)`; verified by grep (0 remnants), node
+      --check, live launch with temp debug logging (facade + Configured
+      paths both fired).
 - [ ] **Phase 4 — UI perf fixes**: event delegation, CSS pulses, 3D dirty-flag
       loop, defer scripts.
 - [ ] **Phase 5 — Verification**: feature walk + Performance tab before/after.
