@@ -47,9 +47,8 @@ UmodelSaved/
 # Reference clone of apocalyptech/borderlands2 (needed for the Python app; ported into Go)
 borderlands2-tool/
 
-# Wails build artifacts
+# Wails build artifacts (frontend/wailsjs bindings are committed)
 desktop/build/bin/
-desktop/frontend/wailsjs/
 
 # Memory directory used by Claude Code agent
 memory/
