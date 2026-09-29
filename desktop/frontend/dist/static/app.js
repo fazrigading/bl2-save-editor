@@ -2129,6 +2129,7 @@ function renderItemList(containerId, items) {
         return;
     }
     container.innerHTML = "";
+    _selectedCard = null;
     for (const item of items) {
         const r = item.resolved || {};
         const lv = r.level ? r.level[1] : "?";
@@ -2185,48 +2186,78 @@ function renderItemList(containerId, items) {
                 <button class="btn-danger-sm btn-act" data-a="delete">DEL</button>
             </div>`;
 
-        card.addEventListener("click", e => {
-            if (e.target.closest(".btn-act")) {
-                const a = e.target.dataset.a;
-                if (a === "level") showEditLevel(item.field, item.index, lv);
-                else if (a === "dupe") duplicateItem(item.field, item.index);
-                else if (a === "export") exportItem(item.field, item.index);
-                else if (a === "delete") deleteItem(item.field, item.index);
-                return;
-            }
-            document.querySelectorAll(".item-card").forEach(c => c.classList.remove("selected"));
-            card.classList.add("selected");
-            showPreview(item);
-        });
-        card.addEventListener("contextmenu", e => showContextMenu(e, item));
-        card.addEventListener("dragstart", function(e) {
-            e.dataTransfer.setData("text/plain", JSON.stringify({ field: item.field, index: item.index }));
-            this.classList.add("dragging");
-        });
-        card.addEventListener("dragend", function() { this.classList.remove("dragging"); });
-        card.addEventListener("dragover", function(e) {
-            e.preventDefault();
-            this.classList.add("drag-over");
-        });
-        card.addEventListener("dragleave", function() { this.classList.remove("drag-over"); });
-        card.addEventListener("drop", async function(e) {
-            e.preventDefault();
-            this.classList.remove("drag-over");
-            try {
-                var src = JSON.parse(e.dataTransfer.getData("text/plain"));
-                var dst = { field: parseInt(this.dataset.dragField), index: parseInt(this.dataset.dragIndex) };
-                if (src.field !== dst.field || src.index === dst.index) return;
-                if (_mutating) return;  // Bug 21: prevent overlapping mutations
-                _mutating = true;
-                var st = await API.reorderItem(currentFile, src.field, { from: src.index, to: dst.index });
-                currentData = st;
-                await applySaveState(st);
-            } catch (err) { /* handled by API facade */ }
-            _mutating = false;  // Bug 22: must reset outside try — error left flag stuck
-        });
+        card._item = item;
         container.appendChild(card);
     }
 }
+
+// Selected card is tracked here instead of scanning the DOM on every click.
+let _selectedCard = null;
+
+// One delegated listener set per item container instead of 7 listeners per
+// card; handlers resolve the card via closest(".item-card").
+["inventory-weapons", "inventory-items", "inventory-bank"].forEach(function(containerId) {
+    var container = document.getElementById(containerId);
+    container.addEventListener("click", function(e) {
+        var card = e.target.closest(".item-card");
+        if (!card || !card._item) return;
+        if (e.target.closest(".btn-act")) {
+            var a = e.target.dataset.a;
+            var it = card._item;
+            var lv = it.resolved && it.resolved.level ? it.resolved.level[1] : "?";
+            if (a === "level") showEditLevel(it.field, it.index, lv);
+            else if (a === "dupe") duplicateItem(it.field, it.index);
+            else if (a === "export") exportItem(it.field, it.index);
+            else if (a === "delete") deleteItem(it.field, it.index);
+            return;
+        }
+        if (_selectedCard) _selectedCard.classList.remove("selected");
+        card.classList.add("selected");
+        _selectedCard = card;
+        showPreview(card._item);
+    });
+    container.addEventListener("contextmenu", function(e) {
+        var card = e.target.closest(".item-card");
+        if (card && card._item) showContextMenu(e, card._item);
+    });
+    container.addEventListener("dragstart", function(e) {
+        var card = e.target.closest(".item-card");
+        if (!card || !card._item) return;
+        e.dataTransfer.setData("text/plain", JSON.stringify({ field: card._item.field, index: card._item.index }));
+        card.classList.add("dragging");
+    });
+    container.addEventListener("dragend", function(e) {
+        var card = e.target.closest(".item-card");
+        if (card) card.classList.remove("dragging");
+    });
+    container.addEventListener("dragover", function(e) {
+        var card = e.target.closest(".item-card");
+        if (!card) return;
+        e.preventDefault();
+        card.classList.add("drag-over");
+    });
+    container.addEventListener("dragleave", function(e) {
+        var card = e.target.closest(".item-card");
+        if (card) card.classList.remove("drag-over");
+    });
+    container.addEventListener("drop", async function(e) {
+        var card = e.target.closest(".item-card");
+        if (!card) return;
+        e.preventDefault();
+        card.classList.remove("drag-over");
+        try {
+            var src = JSON.parse(e.dataTransfer.getData("text/plain"));
+            var dst = { field: parseInt(card.dataset.dragField), index: parseInt(card.dataset.dragIndex) };
+            if (src.field !== dst.field || src.index === dst.index) return;
+            if (_mutating) return;  // Bug 21: prevent overlapping mutations
+            _mutating = true;
+            var st = await API.reorderItem(currentFile, src.field, { from: src.index, to: dst.index });
+            currentData = st;
+            await applySaveState(st);
+        } catch (err) { /* handled by API facade */ }
+        _mutating = false;  // Bug 22: must reset outside try — error left flag stuck
+    });
+});
 
 // ─── Main Editor Tabs ────────────────────────────────────────
 
@@ -2882,7 +2913,7 @@ document.querySelectorAll(".modal-close").forEach(b => b.addEventListener("click
 document.querySelectorAll(".modal-backdrop").forEach(b => b.addEventListener("click", () => b.closest(".modal").classList.add("hidden")));
 document.getElementById("btn-close-preview").addEventListener("click", () => {
     document.getElementById("weapon-preview").classList.add("hidden");
-    document.querySelectorAll(".item-card").forEach(c => c.classList.remove("selected"));
+    if (_selectedCard) { _selectedCard.classList.remove("selected"); _selectedCard = null; }
     if (typeof destroyPreviewViewer === "function") destroyPreviewViewer();
     // Also clear viewport selection state when closing detail preview
     document.querySelectorAll(".equip-slot.viewing").forEach(function(s) { s.classList.remove("viewing"); });

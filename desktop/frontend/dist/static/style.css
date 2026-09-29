@@ -973,27 +973,34 @@ header {
     background: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(62,207,255,0.005) 1px, rgba(62,207,255,0.005) 2px);
     pointer-events: none;
 }
-/* Rarity-based glow intensity — legendaries/pearls pulse */
-.item-card.rarity-legendary {
-    animation: legendaryPulse 3s ease-in-out infinite;
+/* Rarity-based glow intensity — legendaries/pearls/seraphs pulse. The
+   animation is an opacity-only ::after overlay (compositor-only); animating
+   box-shadow repaints the whole card every frame. Resting box-shadow comes
+   from the .item-card base rule. */
+.item-card.rarity-legendary::after,
+.item-card.rarity-pearlescent::after,
+.item-card.rarity-seraph::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 45%, var(--item-rarity, transparent) 130%);
+    opacity: 0.1;
+    animation: rarityGlow 3s ease-in-out infinite;
 }
-.item-card.rarity-pearlescent {
-    animation: pearlPulse 2.5s ease-in-out infinite;
+.item-card.rarity-pearlescent::after { animation-duration: 2.5s; }
+.item-card.rarity-seraph::after { animation-duration: 3.5s; }
+@keyframes rarityGlow {
+    0%, 100% { opacity: 0.1; }
+    50% { opacity: 0.32; }
 }
-.item-card.rarity-seraph {
-    animation: seraphPulse 3.5s ease-in-out infinite;
-}
-@keyframes legendaryPulse {
-    0%, 100% { box-shadow: 0 0 1px var(--border), inset 4px 0 16px -8px var(--item-rarity, transparent); }
-    50% { box-shadow: 0 0 2px rgba(232,163,58,0.3), 0 0 12px rgba(232,163,58,0.08), inset 4px 0 20px -6px rgba(232,163,58,0.2); }
-}
-@keyframes pearlPulse {
-    0%, 100% { box-shadow: 0 0 1px var(--border), inset 4px 0 16px -8px var(--item-rarity, transparent); }
-    50% { box-shadow: 0 0 2px rgba(0,229,255,0.3), 0 0 12px rgba(0,229,255,0.08), inset 4px 0 20px -6px rgba(0,229,255,0.2); }
-}
-@keyframes seraphPulse {
-    0%, 100% { box-shadow: 0 0 1px var(--border), inset 4px 0 16px -8px var(--item-rarity, transparent); }
-    50% { box-shadow: 0 0 2px rgba(255,64,129,0.3), 0 0 12px rgba(255,64,129,0.08), inset 4px 0 20px -6px rgba(255,64,129,0.2); }
+@media (prefers-reduced-motion: reduce) {
+    .item-card.rarity-legendary::after,
+    .item-card.rarity-pearlescent::after,
+    .item-card.rarity-seraph::after,
+    .weapon-icon-wrap[class*="elem-"]::after {
+        animation: none;
+    }
 }
 .weapon-icon-wrap {
     width: 52px;

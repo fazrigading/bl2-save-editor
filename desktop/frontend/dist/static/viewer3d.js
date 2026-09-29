@@ -1574,10 +1574,21 @@ function createViewer(containerId) {
     var animId = null;
     var rotSpeed = 0.003;
     var _pulsePhase = 0;
+    // Dirty-flag loop: render on camera/resize changes, plus one sweep every
+    // 3rd frame to keep the rim pulse alive (~20fps); idle GPU work drops to
+    // 1/3. OrbitControls only fires "change" once the camera actually moved.
+    var _dirty = true;
+    var _frame = 0;
+    if (controls) {
+        controls.addEventListener("change", function() { _dirty = true; });
+    }
 
     function animate() {
         animId = requestAnimationFrame(animate);
+        _frame++;
         if (controls) controls.update();
+        if (!_dirty && _frame % 3 !== 0) return;
+        _dirty = false;
         if (currentModel) currentModel.rotation.y += rotSpeed;
         // Subtle rim light pulse for high-rarity items
         if (rimLight._pulseEnabled) {
@@ -1600,6 +1611,7 @@ function createViewer(containerId) {
         for (var i = 0; i < entries.length; i++) {
             var rect = entries[i].contentRect;
             if (rect.width > 0 && rect.height > 0) {
+                _dirty = true;
                 camera.aspect = rect.width / rect.height;
                 camera.updateProjectionMatrix();
                 renderer.setSize(rect.width, rect.height);
