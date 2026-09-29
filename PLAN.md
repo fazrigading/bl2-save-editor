@@ -29,8 +29,17 @@ desktop API intentionally diverges from it.
       `_reloadMissionsTab(pt, st)`; verified by grep (0 remnants), node
       --check, live launch with temp debug logging (facade + Configured
       paths both fired).
-- [ ] **Phase 4 — UI perf fixes**: event delegation, CSS pulses, 3D dirty-flag
-      loop, defer scripts.
+- [x] **Phase 4 — UI perf fixes** (COMMITTED): one delegated
+      click/contextmenu/drag* listener set per inventory container (cards
+      carry `_item`; `_selectedCard` replaces the per-click
+      querySelectorAll scan); rarity pulses are now an opacity-only
+      `::after` overlay (`rarityGlow`) with a `prefers-reduced-motion`
+      kill switch (elemPulse kept); 3D viewers render on a dirty flag
+      (controls "change" — vendored OrbitControls only fires it on real
+      camera movement — plus resize) with a every-3rd-frame sweep for the
+      rim pulse and `_tickSpecialEffects` inside the render branch only;
+      all 13 `<script src>` tags deferred, order kept, inline boot script
+      untouched.
 - [ ] **Phase 5 — Verification**: feature walk + Performance tab before/after.
 
 ## Phase 1 decisions (recorded for continuation)
