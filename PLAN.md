@@ -40,7 +40,24 @@ desktop API intentionally diverges from it.
       rim pulse and `_tickSpecialEffects` inside the render branch only;
       all 13 `<script src>` tags deferred, order kept, inline boot script
       untouched.
-- [ ] **Phase 5 — Verification**: feature walk + Performance tab before/after.
+- [x] **Phase 5 — Verification** (2026-09-30): `go test ./...` green
+  (now 7 bridge tests incl. new `TestEditorSetSkillsMergesState` proving
+  mutations return merged state), `go vet` clean, `go build`+`wails build`
+  OK with zero binding drift; zero `.Invoke(`/`await api(`/`bridge.Bridge`
+  remnants; facade cross-check: all 54 `API.*` call sites defined (67
+  facade keys), all 67 Go targets present in bindings d.ts; node --check
+  clean on api/app/viewer3d/wails_api; 13/13 scripts deferred; event
+  delegation + `card._item` + `_selectedCard`, rarityGlow opacity overlay
+  + reduced-motion kill switch, 3D dirty flag + frame%3 sweep,
+  `applySaveState` at 15 mutation sites + `_reloadMissionsTab(pt, st)`,
+  drag-drop reorder → `API.reorderItem`, error toasts, `guardGame()`
+  backend + `checkGameRunning` banner; gibbed progress event chain
+  (EventsEmit ×3 → setup `EventsOn` ×3) verified. FIXED: `make dev` was
+  broken — `"frontend:dev:serverUrl": "auto"` requires a watcher;
+  cleared to `""` in wails.json, dev server now boots, serves dist +
+  ipc.js at :34115, and the app window ran + exited cleanly. STILL OPEN
+  (needs human at the wheel): click-through feature walk + Performance
+  tab before/after profiling + [perf] console check under real BL2 saves.
 
 ## Phase 1 decisions (recorded for continuation)
 

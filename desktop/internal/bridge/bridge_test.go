@@ -80,6 +80,22 @@ func TestEditorMissionDB(t *testing.T) {
 	}
 }
 
+func TestEditorSetSkillsMergesState(t *testing.T) {
+	ed := &Editor{testBridge(t)}
+	res, err := ed.SetSkills("Save0001.sav", map[string]any{"skills": map[string]any{}})
+	if err != nil {
+		t.Fatalf("SetSkills: %v", err)
+	}
+	if res["ok"] != true {
+		t.Fatalf("missing ok: %v", res)
+	}
+	for _, key := range []string{"character", "inventory", "missions", "fast_travel", "challenges"} {
+		if res[key] == nil {
+			t.Fatalf("mutation result missing merged state key %q: %v", key, keysOf(res))
+		}
+	}
+}
+
 func TestAppConfigPaths(t *testing.T) {
 	ap := &App{testBridge(t)}
 	paths := ap.ConfigPaths()
