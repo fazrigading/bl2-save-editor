@@ -216,6 +216,108 @@ func TestSetCharacterBadFile(t *testing.T) {
 	}
 }
 
+func TestDeleteItemShrinks(t *testing.T) {
+	s := testSession(t, "")
+	seedTestItems(t, s)
+	before, err := s.OpenSave("Save0001.sav")
+	if err != nil {
+		t.Fatalf("OpenSave: %v", err)
+	}
+	victim := before.Inventory["items"][0]
+	after, err := s.DeleteItem("Save0001.sav", 53, victim.Index)
+	if err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+	if got := len(after["items"]); got != len(before.Inventory["items"])-1 {
+		t.Fatalf("expected items %d -> %d, got %d", len(before.Inventory["items"]), len(before.Inventory["items"])-1, got)
+	}
+}
+
+func TestDuplicateItemGrows(t *testing.T) {
+	s := testSession(t, "")
+	seedTestItems(t, s)
+	before, err := s.OpenSave("Save0001.sav")
+	if err != nil {
+		t.Fatalf("OpenSave: %v", err)
+	}
+	src := before.Inventory["weapons"][0]
+	after, err := s.DuplicateItem("Save0001.sav", 54, src.Index)
+	if err != nil {
+		t.Fatalf("DuplicateItem: %v", err)
+	}
+	if got := len(after["weapons"]); got != len(before.Inventory["weapons"])+1 {
+		t.Fatalf("expected weapons %d -> %d, got %d", len(before.Inventory["weapons"]), len(before.Inventory["weapons"])+1, got)
+	}
+}
+
+func TestTransferItemMoves(t *testing.T) {
+	s := testSession(t, "")
+	seedTestItems(t, s)
+	before, err := s.OpenSave("Save0001.sav")
+	if err != nil {
+		t.Fatalf("OpenSave: %v", err)
+	}
+	src := before.Inventory["items"][0]
+	after, err := s.TransferItem("Save0001.sav", 53, src.Index, 41)
+	if err != nil {
+		t.Fatalf("TransferItem: %v", err)
+	}
+	if got := len(after["items"]); got != len(before.Inventory["items"])-1 {
+		t.Fatalf("expected items -1: before=%d got=%d", len(before.Inventory["items"]), got)
+	}
+	if got := len(after["bank"]); got != len(before.Inventory["bank"])+1 {
+		t.Fatalf("expected bank +1: before=%d got=%d", len(before.Inventory["bank"]), got)
+	}
+}
+
+func TestSetItemLevelApplies(t *testing.T) {
+	s := testSession(t, "")
+	seedTestItems(t, s)
+	before, err := s.OpenSave("Save0001.sav")
+	if err != nil {
+		t.Fatalf("OpenSave: %v", err)
+	}
+	src := before.Inventory["weapons"][0]
+	after, err := s.SetItemLevel("Save0001.sav", 54, src.Index, 50)
+	if err != nil {
+		t.Fatalf("SetItemLevel: %v", err)
+	}
+	found := false
+	for _, it := range after["weapons"] {
+		if it.Index == src.Index {
+			found = true
+			if it.Level != 50 {
+				t.Fatalf("expected level 50, got %+v", it)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("mutated weapon index %d missing: %+v", src.Index, after["weapons"])
+	}
+}
+
+func TestItemMutationsRejectBad(t *testing.T) {
+	s := testSession(t, "")
+	seedTestItems(t, s)
+	if _, err := s.DeleteItem("Save0001.sav", 53, -1); err == nil {
+		t.Fatal("expected error for DeleteItem index -1")
+	}
+	if _, err := s.DuplicateItem("Save0001.sav", 54, -1); err == nil {
+		t.Fatal("expected error for DuplicateItem index -1")
+	}
+	before, err := s.OpenSave("Save0001.sav")
+	if err != nil {
+		t.Fatalf("OpenSave: %v", err)
+	}
+	src := before.Inventory["items"][0]
+	if _, err := s.TransferItem("Save0001.sav", 53, src.Index, 53); err == nil {
+		t.Fatal("expected error for same-field transfer")
+	}
+	if _, err := s.SetItemLevel("Save0001.sav", 54, -1, 50); err == nil {
+		t.Fatal("expected error for SetItemLevel index -1")
+	}
+}
+
 // seedTestItems plants one synthetic weapon + one synthetic item in the
 // TempDir fixture copy (the fixture itself holds only fake placeholder
 // entries). Values avoid the fake-item marker (values[0] == 255).

@@ -207,6 +207,86 @@ func (s *Session) buildItemView(raw map[string]any) ItemView {
 	return view
 }
 
+// buildInventory maps raw ExtractInventory output to view-models.
+func (s *Session) buildInventory(raw map[string]any) map[string][]ItemView {
+	inventory := map[string][]ItemView{}
+	for key, rows := range raw {
+		views := []ItemView{}
+		if list, ok := rows.([]map[string]any); ok {
+			for _, item := range list {
+				views = append(views, s.buildItemView(item))
+			}
+		}
+		inventory[key] = views
+	}
+	return inventory
+}
+
+// openInventory re-reads a save and rebuilds its inventory views.
+func (s *Session) openInventory(filename string) (map[string][]ItemView, error) {
+	store, err := s.requireStore()
+	if err != nil {
+		return nil, err
+	}
+	_, tree, err := store.ReadSave(filename)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildInventory(store.ExtractInventory(tree)), nil
+}
+
+// mutate is the shared item-mutation path: guard → validate → call →
+// re-extract. A store rejection (false) becomes errMsg, never a silent
+// no-op.
+func (s *Session) mutate(filename string, op func(*editor.Store) (bool, error), errMsg string) (map[string][]ItemView, error) {
+	if platform.IsGameRunning() {
+		return nil, errors.New("Borderlands 2 is running. Close the game before editing saves.")
+	}
+	if !validSaveFilename(filename) {
+		return nil, errors.New("invalid save filename")
+	}
+	store, err := s.requireStore()
+	if err != nil {
+		return nil, err
+	}
+	ok, err := op(store)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New(errMsg)
+	}
+	return s.openInventory(filename)
+}
+
+// DeleteItem removes an item and returns the fresh inventory.
+func (s *Session) DeleteItem(filename string, field, index int) (map[string][]ItemView, error) {
+	return s.mutate(filename, func(store *editor.Store) (bool, error) {
+		return store.DeleteItem(filename, field, index)
+	}, "Item not found")
+}
+
+// DuplicateItem clones an item and returns the fresh inventory.
+func (s *Session) DuplicateItem(filename string, field, index int) (map[string][]ItemView, error) {
+	return s.mutate(filename, func(store *editor.Store) (bool, error) {
+		return store.DuplicateItem(filename, field, index)
+	}, "Item not found")
+}
+
+// TransferItem moves an item between sections and returns the fresh inventory.
+func (s *Session) TransferItem(filename string, fromField, index, toField int) (map[string][]ItemView, error) {
+	return s.mutate(filename, func(store *editor.Store) (bool, error) {
+		return store.TransferItem(filename, fromField, index, toField)
+	}, "Transfer failed")
+}
+
+// SetItemLevel rewrites an item's level and returns the fresh inventory.
+func (s *Session) SetItemLevel(filename string, field, index, level int) (map[string][]ItemView, error) {
+	return s.mutate(filename, func(store *editor.Store) (bool, error) {
+		return store.SetItemLevel(filename, field, index, level)
+	}, "Item not found")
+}
+
 // OpenSave reads a save and builds its view-model.
 func (s *Session) OpenSave(filename string) (*SaveView, error) {
 	store, err := s.requireStore()
@@ -235,16 +315,7 @@ func (s *Session) OpenSave(filename string) (*SaveView, error) {
 			})
 		}
 	}
-	inventory := map[string][]ItemView{}
-	for key, rows := range store.ExtractInventory(tree) {
-		views := []ItemView{}
-		if list, ok := rows.([]map[string]any); ok {
-			for _, raw := range list {
-				views = append(views, s.buildItemView(raw))
-			}
-		}
-		inventory[key] = views
-	}
+	inventory := s.buildInventory(store.ExtractInventory(tree))
 	return &SaveView{
 		Filename: filename,
 		Character: CharacterView{
