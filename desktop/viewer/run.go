@@ -79,6 +79,21 @@ func windowTitle(st setup.AssetStatus) string {
 	return "3D viewer"
 }
 
+// Viewer position hooks let the UI bridge persist/restore the g3n window
+// position without importing g3n there.
+var (
+	LastViewerPos    *ViewerPos
+	pendingViewerPos *ViewerPos
+)
+
+// ViewerPos is a screen position for the g3n window.
+type ViewerPos struct {
+	X, Y int
+}
+
+// SetPendingViewerPos restores a saved position on the next Run.
+func SetPendingViewerPos(p *ViewerPos) { pendingViewerPos = p }
+
 // Run opens the g3n window and blocks (like g3n app.Run). A zero-value item
 // selects character mode. onClose fires when the window closes.
 func Run(ses *session.Session, st setup.AssetStatus, item session.ItemView, onClose func()) {
@@ -88,6 +103,17 @@ func Run(ses *session.Session, st setup.AssetStatus, item session.ItemView, onCl
 		}
 	}()
 	a := app.App()
+	if gw, ok := a.IWindow.(*window.GlfwWindow); ok {
+		if pendingViewerPos != nil {
+			gw.SetPos(pendingViewerPos.X, pendingViewerPos.Y)
+			pendingViewerPos = nil
+		}
+		// Record the last position for the bridge to persist on close.
+		defer func() {
+			x, y := gw.GetPos()
+			LastViewerPos = &ViewerPos{X: x, Y: y}
+		}()
+	}
 	scene := core.NewNode()
 	gui.Manager().Set(scene)
 
