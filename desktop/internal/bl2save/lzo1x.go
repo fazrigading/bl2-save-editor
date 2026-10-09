@@ -7,6 +7,18 @@ import (
 
 var errLZOOutOfRange = errors.New("lzo1x data out of range")
 
+// appendMulti encodes an extended length the way the decoder parses it:
+// N zero bytes followed by a NONZERO terminator. A zero terminator would
+// be consumed as another extension digit and desync the stream, so values
+// are split into 255-sized chunks (255 itself is a valid terminator).
+func appendMulti(dst []byte, t int) []byte {
+	for t > 255 {
+		dst = append(dst, 0)
+		t -= 255
+	}
+	return append(dst, byte(t))
+}
+
 var clzTable = [37]uint32{
 	32, 0, 1, 26, 2, 23, 27, 0, 3, 16, 24, 30, 28, 11, 0, 13,
 	4, 7, 17, 0, 25, 22, 31, 15, 29, 10, 12, 6, 0, 21, 14, 9,
@@ -253,18 +265,12 @@ func lzo1xCompressCore(src, dst []byte, ti, ipStart, ipLen int) (int, []byte, er
 			} else {
 				if t <= 18 {
 					dst = append(dst, byte(t-3))
-				} else {
-					tt := t - 18
-					dst = append(dst, 0)
-					n := tt / 255
-					rem := tt % 255
-					for j := 0; j < n; j++ {
-						dst = append(dst, 0)
-					}
-					dst = append(dst, byte(rem))
-				}
-				dst = append(dst, src[ii:ii+t]...)
-				ii += t
+			} else {
+				dst = append(dst, 0)
+				dst = appendMulti(dst, t-18)
+			}
+			dst = append(dst, src[ii:ii+t]...)
+			ii += t
 			}
 		}
 
@@ -299,12 +305,7 @@ func lzo1xCompressCore(src, dst []byte, ti, ipStart, ipLen int) (int, []byte, er
 			} else {
 				mLen -= 33
 				dst = append(dst, 32)
-				n := mLen / 255
-				rem := mLen % 255
-				for j := 0; j < n; j++ {
-					dst = append(dst, 0)
-				}
-				dst = append(dst, byte(rem))
+				dst = appendMulti(dst, mLen)
 			}
 			dst = append(dst, byte((mOff<<2)&0xFF))
 			dst = append(dst, byte((mOff>>6)&0xFF))
@@ -315,12 +316,7 @@ func lzo1xCompressCore(src, dst []byte, ti, ipStart, ipLen int) (int, []byte, er
 			} else {
 				mLen -= 9
 				dst = append(dst, byte(0xFF&(16|((mOff>>11)&8))))
-				n := mLen / 255
-				rem := mLen % 255
-				for j := 0; j < n; j++ {
-					dst = append(dst, 0)
-				}
-				dst = append(dst, byte(rem))
+				dst = appendMulti(dst, mLen)
 			}
 			dst = append(dst, byte((mOff<<2)&0xFF))
 			dst = append(dst, byte((mOff>>6)&0xFF))
@@ -363,14 +359,8 @@ func lzo1x1Compress(s []byte) ([]byte, error) {
 		} else if t <= 18 {
 			dst = append(dst, byte(t-3))
 		} else {
-			tt := t - 18
 			dst = append(dst, 0)
-			n := tt / 255
-			rem := tt % 255
-			for j := 0; j < n; j++ {
-				dst = append(dst, 0)
-			}
-			dst = append(dst, byte(rem))
+			dst = appendMulti(dst, t-18)
 		}
 		dst = append(dst, src[ii:ii+t]...)
 	}
