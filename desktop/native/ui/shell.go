@@ -110,6 +110,14 @@ func firstModel(dir string) string {
 	return found
 }
 
+// parseModel parses .glb via ParseBin and anything else via ParseJSON.
+func parseModel(path string) (*gltf.GLTF, error) {
+	if strings.EqualFold(filepath.Ext(path), ".glb") {
+		return gltf.ParseBin(path)
+	}
+	return gltf.ParseJSON(path)
+}
+
 // showFirstModel parses the first model in dir and adds scene 0 to the
 // scene.
 func showFirstModel(scene *core.Node, dir string) error {
@@ -117,7 +125,7 @@ func showFirstModel(scene *core.Node, dir string) error {
 	if path == "" {
 		return errNoModel
 	}
-	g, err := gltf.ParseJSON(path)
+	g, err := parseModel(path)
 	if err != nil {
 		return err
 	}
