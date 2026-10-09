@@ -12,3 +12,9 @@ dev:
 
 patch:
 	go build -tags webkit2_41 -o build/bin/bl2patch ./cmd/bl2patch
+
+build-native:
+	go build -o build/bin/bl2native ./cmd/bl2native
+
+dev-native:
+	go run ./cmd/bl2native
