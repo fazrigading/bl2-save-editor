@@ -1,7 +1,8 @@
-// Package ui owns the g3n window. Slice 0 spike: HSplit shell with the
-// save list on the left and a single-glTF viewer (or setup CTA) on the
-// right. g3n loader API used here: gltf.ParseJSON + LoadScene(0)
-// (engine v0.2.0).
+// Package ui owns the g3n window. Slice 1: HSplit shell with the save
+// list on the left and (right) always-visible chrome status + tab shell
+// (CHARACTER form, INVENTORY tables) + viewer bar (character/preview mode
+// switch, carousel prev/next, back-to-character). g3n loader API:
+// gltf.ParseJSON + LoadScene(0) (engine v0.2.0).
 package ui
 
 import (
@@ -26,8 +27,48 @@ import (
 	"bl2save/desktop/native/setup"
 )
 
-// Run opens the editor window. Click-to-open and tabs land in slice 1;
-// the spike auto-opens the first save to prove session wiring.
+// viewerCtl swaps the 3D scene between the character model and the item
+// preview proxy. Preview meshes are flat-PBR proxies from inventory.go,
+// never the extracted assets.
+type viewerCtl struct {
+	scene     *core.Node
+	charNode  core.INode
+	charShown bool
+	preview   core.INode
+	mode      *gui.Label
+	inv       *invPanel
+}
+
+// showPreview drops the character model and shows the item proxy.
+func (v *viewerCtl) showPreview(item session.ItemView) {
+	if v.preview != nil {
+		v.scene.Remove(v.preview)
+		v.preview = nil
+	}
+	if v.charNode != nil && v.charShown {
+		v.scene.Remove(v.charNode)
+		v.charShown = false
+	}
+	v.preview = previewMesh(item)
+	v.scene.Add(v.preview)
+	v.mode.SetText("preview: " + item.DisplayName)
+}
+
+// showCharacter drops the preview and restores the character model.
+func (v *viewerCtl) showCharacter() {
+	if v.preview != nil {
+		v.scene.Remove(v.preview)
+		v.preview = nil
+	}
+	if v.charNode != nil && !v.charShown {
+		v.scene.Add(v.charNode)
+		v.charShown = true
+	}
+	v.mode.SetText("character")
+}
+
+// Run opens the editor window. The spike auto-opens the first save;
+// click-to-open lands in a later slice.
 func Run(ses *session.Session, st setup.AssetStatus) error {
 	a := app.App()
 	scene := core.NewNode()
@@ -52,23 +93,71 @@ func Run(ses *session.Session, st setup.AssetStatus) error {
 	}
 	split.P0.Add(left)
 
-	// Right: viewer or setup CTA.
-	if !st.OK {
-		split.P1.Add(gui.NewLabel("3D assets missing in " + st.Dir +
-			" — run setup to extract UModel assets"))
-	} else if len(saves) == 0 || listErr != nil {
-		split.P1.Add(gui.NewLabel("Select a save to preview"))
-	} else {
+	// Right: chrome status (ALWAYS visible — model errors and setup CTAs
+	// live here, never inside a tab pane) + tab shell + viewer bar.
+	right := gui.NewPanel(float32(width)*0.75, float32(height))
+	right.SetLayout(gui.NewVBoxLayout())
+	chrome := gui.NewLabel("")
+	right.Add(chrome)
+	split.P1.Add(right)
+
+	vc := &viewerCtl{scene: scene}
+	vc.mode = gui.NewLabel("character")
+	bar := gui.NewPanel(600, 40)
+	bar.SetLayout(gui.NewHBoxLayout())
+	bar.Add(vc.mode)
+	prevBtn := gui.NewButton("Prev")
+	nextBtn := gui.NewButton("Next")
+	backBtn := gui.NewButton("Back to character")
+	bar.Add(prevBtn)
+	bar.Add(nextBtn)
+	bar.Add(backBtn)
+	prevBtn.Subscribe(gui.OnClick, func(string, interface{}) {
+		if vc.inv != nil {
+			vc.inv.stepCarousel(-1)
+		}
+	})
+	nextBtn.Subscribe(gui.OnClick, func(string, interface{}) {
+		if vc.inv != nil {
+			vc.inv.stepCarousel(1)
+		}
+	})
+	backBtn.Subscribe(gui.OnClick, func(string, interface{}) { vc.showCharacter() })
+
+	if listErr == nil && len(saves) > 0 {
 		sv, err := ses.OpenSave(saves[0].Filename)
 		if err != nil {
-			split.P1.Add(gui.NewLabel("Open failed: " + err.Error()))
+			chrome.SetText("Open failed: " + err.Error())
 		} else {
 			log.Printf("opened %s (%s, level %d)", sv.Filename, sv.Character.ClassName, sv.Character.Level)
-			split.P1.Add(gui.NewLabel(sv.Filename + " — " + sv.Character.ClassName))
-			if err := showFirstModel(scene, st.Dir); err != nil {
-				split.P1.Add(gui.NewLabel("Model load failed: " + err.Error()))
+			tb := buildTabs(float32(width)*0.75, float32(height))
+			tb.TabAt(tabCharacter).SetContent(newCharacterPanel(ses, sv))
+			invRoot, inv := newInventoryPanel(ses, sv, vc.showPreview)
+			vc.inv = inv
+			tb.TabAt(tabInventory).SetContent(invRoot)
+			right.Add(tb)
+			right.Add(bar)
+			if !st.OK {
+				chrome.SetText("3D assets missing in " + st.Dir +
+					" — run setup to extract UModel assets")
+			} else if path := firstModel(st.Dir); path == "" {
+				chrome.SetText("No .gltf/.glb in " + st.Dir +
+					" — run setup to extract UModel assets")
+			} else if g, err := parseModel(path); err != nil {
+				chrome.SetText("Model load failed: " + err.Error())
+			} else if node, err := g.LoadScene(0); err != nil {
+				chrome.SetText("Model load failed: " + err.Error())
+			} else {
+				vc.charNode = node
+				scene.Add(node)
+				vc.charShown = true
+				log.Printf("rendering model %s", path)
 			}
 		}
+	} else if listErr != nil {
+		chrome.SetText("Setup required: " + listErr.Error())
+	} else {
+		chrome.SetText("Select a save to preview")
 	}
 
 	// Camera + lights.
@@ -117,29 +206,3 @@ func parseModel(path string) (*gltf.GLTF, error) {
 	}
 	return gltf.ParseJSON(path)
 }
-
-// showFirstModel parses the first model in dir and adds scene 0 to the
-// scene.
-func showFirstModel(scene *core.Node, dir string) error {
-	path := firstModel(dir)
-	if path == "" {
-		return errNoModel
-	}
-	g, err := parseModel(path)
-	if err != nil {
-		return err
-	}
-	node, err := g.LoadScene(0)
-	if err != nil {
-		return err
-	}
-	scene.Add(node)
-	log.Printf("rendering model %s", path)
-	return nil
-}
-
-type modelError string
-
-func (e modelError) Error() string { return string(e) }
-
-const errNoModel = modelError("no .gltf/.glb found")
