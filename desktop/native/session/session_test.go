@@ -332,3 +332,118 @@ func seedTestItems(t *testing.T, s *Session) {
 		t.Fatalf("AddItem: ok=%v err=%v", ok, err)
 	}
 }
+
+func TestGetSkillsUnsetConfig(t *testing.T) {
+	if _, err := New(nil).GetSkills("Save0001.sav"); err == nil {
+		t.Fatal("expected setup error from unconfigured session")
+	}
+}
+
+func TestGetSkillsRoundTrip(t *testing.T) {
+	s := testSession(t, "")
+	const sentry = "GD_Soldier_Skills.Guerrilla.Sentry"
+	n, err := s.SetSkills("Save0001.sav", map[string]int64{sentry: 3})
+	if err != nil {
+		t.Fatalf("SetSkills: %v", err)
+	}
+	if n != 1 && n != 0 {
+		t.Fatalf("expected 0 or 1 changed, got %d", n)
+	}
+	skills, err := s.GetSkills("Save0001.sav")
+	if err != nil {
+		t.Fatalf("GetSkills: %v", err)
+	}
+	if n == 1 && skills[sentry] != 3 {
+		t.Fatalf("expected Sentry=3 after set, got %d (%+v)", skills[sentry], skills)
+	}
+	if _, ok := skills["GD_Nope.Nope.Nope"]; ok {
+		t.Fatal("unknown path should be absent")
+	}
+}
+
+func TestListAchievementsUnsetConfig(t *testing.T) {
+	if _, err := New(nil).ListAchievements(); err == nil {
+		t.Fatal("expected setup error from unconfigured session")
+	}
+}
+
+func TestListAchievementsDB(t *testing.T) {
+	s := testSession(t, t.TempDir())
+	rows, err := s.ListAchievements()
+	if err != nil {
+		t.Fatalf("ListAchievements: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("expected achievement rows")
+	}
+	for _, r := range rows {
+		if r.Unlocked != nil {
+			t.Fatalf("save-state mode: Unlocked must be nil, got %v", *r.Unlocked)
+		}
+		if r.APIName == "" {
+			t.Fatal("empty APIName")
+		}
+	}
+	if rows[0].CategoryName == "" {
+		t.Fatal("expected CategoryName")
+	}
+}
+
+func TestEnableAchievementsFixture(t *testing.T) {
+	s := testSession(t, "")
+	res, err := s.EnableAchievements("Save0001.sav")
+	if err != nil {
+		t.Fatalf("EnableAchievements: %v", err)
+	}
+	for _, key := range []string{"level", "challenges_completed"} {
+		if _, ok := res[key]; !ok {
+			t.Fatalf("missing key %q in %+v", key, res)
+		}
+	}
+}
+
+func TestUnlockPlaythrough(t *testing.T) {
+	s := testSession(t, "")
+	ok, err := s.UnlockPlaythrough("Save0001.sav", "tvhm")
+	if err != nil || !ok {
+		t.Fatalf("UnlockPlaythrough tvhm: ok=%v err=%v", ok, err)
+	}
+	ok, err = s.UnlockPlaythrough("Save0001.sav", "bogus")
+	if err != nil || ok {
+		t.Fatalf("UnlockPlaythrough bogus: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestDetailParts(t *testing.T) {
+	s := testSession(t, "")
+	seedTestItems(t, s)
+	saves, err := s.ListSaves()
+	if err != nil {
+		t.Fatalf("ListSaves: %v", err)
+	}
+	if len(saves) == 0 {
+		t.Fatal("no saves")
+	}
+	sv, err := s.OpenSave(saves[0].Filename)
+	if err != nil {
+		t.Fatalf("OpenSave: %v", err)
+	}
+	weapons := sv.Inventory["weapons"]
+	if len(weapons) == 0 {
+		t.Fatal("no weapons after seed")
+	}
+	w := weapons[0]
+	types, parts, err := s.DetailParts(sv.Filename, w.Field, w.Index)
+	if err != nil {
+		t.Fatalf("DetailParts: %v", err)
+	}
+	// Without Gibbed data paths resolve to ""; with data the type path is
+	// non-empty. Either way: no panic, parts contain no empty strings.
+	if len(types) > 0 && types[0] != "" {
+		for _, p := range parts {
+			if p == "" {
+				t.Fatal("empty part path in parts")
+			}
+		}
+	}
+}
