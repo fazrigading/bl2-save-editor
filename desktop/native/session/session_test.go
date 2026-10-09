@@ -177,6 +177,45 @@ func TestOpenSaveInventoryNoGibbed(t *testing.T) {
 	}
 }
 
+func TestSetCharacterLevel(t *testing.T) {
+	s := testSession(t, "")
+	cv, err := s.SetCharacter("Save0001.sav", map[string]any{"level": 20})
+	if err != nil {
+		t.Fatalf("SetCharacter: %v", err)
+	}
+	if cv.Level != 20 {
+		t.Fatalf("expected level 20, got %+v", cv)
+	}
+}
+
+func TestSetCharacterClamps(t *testing.T) {
+	s := testSession(t, "")
+	before, err := s.OpenSave("Save0001.sav")
+	if err != nil {
+		t.Fatalf("OpenSave: %v", err)
+	}
+	cv, err := s.SetCharacter("Save0001.sav", map[string]any{"level": -5, "money": -1})
+	if err != nil {
+		t.Fatalf("SetCharacter with clamps: %v", err)
+	}
+	if cv.Level < 1 {
+		t.Fatalf("level clamped below 1: %+v", cv)
+	}
+	if cv.Level != before.Character.Level {
+		t.Fatalf("out-of-range level should leave level unchanged: before=%d got=%d", before.Character.Level, cv.Level)
+	}
+	if cv.Money != 0 {
+		t.Fatalf("expected money clamped to 0, got %+v", cv)
+	}
+}
+
+func TestSetCharacterBadFile(t *testing.T) {
+	s := testSession(t, "")
+	if _, err := s.SetCharacter("../../etc/passwd", map[string]any{"level": 20}); err == nil {
+		t.Fatal("expected rejection of traversal name")
+	}
+}
+
 // seedTestItems plants one synthetic weapon + one synthetic item in the
 // TempDir fixture copy (the fixture itself holds only fake placeholder
 // entries). Values avoid the fake-item marker (values[0] == 255).

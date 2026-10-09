@@ -267,3 +267,25 @@ func (s *Session) OpenSave(filename string) (*SaveView, error) {
 		Inventory: inventory,
 	}, nil
 }
+
+// SetCharacter applies character changes and returns the fresh view.
+func (s *Session) SetCharacter(filename string, changes map[string]any) (*CharacterView, error) {
+	if platform.IsGameRunning() {
+		return nil, errors.New("Borderlands 2 is running. Close the game before editing saves.")
+	}
+	if !validSaveFilename(filename) {
+		return nil, errors.New("invalid save filename")
+	}
+	store, err := s.requireStore()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := store.UpdateCharacter(filename, changes); err != nil {
+		return nil, err
+	}
+	sv, err := s.OpenSave(filename)
+	if err != nil {
+		return nil, err
+	}
+	return &sv.Character, nil
+}
