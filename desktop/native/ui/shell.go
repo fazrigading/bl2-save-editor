@@ -52,7 +52,7 @@ func Run(ses *session.Session, st setup.AssetStatus) error {
 	}
 	split.P0.Add(left)
 
-	// Right: viewer or setup CTA.
+	// Right: tab shell (slice 1); slice-0 viewer kept until Task 5 rewires.
 	if !st.OK {
 		split.P1.Add(gui.NewLabel("3D assets missing in " + st.Dir +
 			" — run setup to extract UModel assets"))
@@ -64,9 +64,16 @@ func Run(ses *session.Session, st setup.AssetStatus) error {
 			split.P1.Add(gui.NewLabel("Open failed: " + err.Error()))
 		} else {
 			log.Printf("opened %s (%s, level %d)", sv.Filename, sv.Character.ClassName, sv.Character.Level)
-			split.P1.Add(gui.NewLabel(sv.Filename + " — " + sv.Character.ClassName))
+			tb := buildTabs(float32(width)*0.75, float32(height))
+			tb.TabAt(tabCharacter).SetContent(newCharacterPanel(ses, sv))
+			inv := gui.NewPanel(600, 400)
+			inv.SetLayout(gui.NewVBoxLayout())
+			inv.Add(gui.NewLabel(sv.Filename + " — " + sv.Character.ClassName))
+			inv.Add(gui.NewLabel("Inventory lands in Task 5"))
+			tb.TabAt(tabInventory).SetContent(inv)
+			split.P1.Add(tb)
 			if err := showFirstModel(scene, st.Dir); err != nil {
-				split.P1.Add(gui.NewLabel("Model load failed: " + err.Error()))
+				inv.Add(gui.NewLabel("Model load failed: " + err.Error()))
 			}
 		}
 	}
