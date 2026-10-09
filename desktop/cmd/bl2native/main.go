@@ -1,5 +1,4 @@
 // Command bl2native is the native g3n-based BL2 save editor.
-// Slice 0: scaffold — reports configuration status; UI wiring lands in Task 4.
 package main
 
 import (
@@ -7,14 +6,20 @@ import (
 	"os"
 
 	"bl2save/desktop/internal/platform"
+	"bl2save/desktop/native/session"
+	"bl2save/desktop/native/setup"
+	"bl2save/desktop/native/ui"
 )
 
 func main() {
 	cfg := platform.Load()
+	ses := session.New(cfg)
+	st := setup.ProbeAssetDir(setup.DefaultAssetDir())
 	if cfg == nil || !cfg.Valid() {
 		fmt.Println("bl2native: not configured — complete setup first")
-		return
 	}
-	fmt.Println("bl2native: configured, save dir:", cfg.SaveDir)
-	os.Exit(0)
+	if err := ui.Run(ses, st); err != nil {
+		fmt.Fprintln(os.Stderr, "bl2native:", err)
+		os.Exit(1)
+	}
 }
