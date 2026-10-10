@@ -22,6 +22,7 @@ config.json
 # IDE / tool state
 .vscode/
 .idea/
+.agents/
 .claude/
 .commandcode/
 *.swp
