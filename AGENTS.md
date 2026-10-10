@@ -1,25 +1,20 @@
 # AGENTS.md — bl2-save-editor
 
-Two-track repo. Python Flask app at root is functional reference; Go/Wails native rewrite in `desktop/` is active development. Desktop API intentionally diverges from Flask API (`PLAN.md`).
-
 ## Setup
 
 - Preferred: `python setup_wizard.py` (idempotent; `--yes --launch` for zero prompts). On Windows use `python`, not `python3` (Store stub).
 - Manual: `python -m venv .venv && pip install -r requirements.txt && pip install pytest`, then `git clone --depth 1 https://github.com/apocalyptech/borderlands2.git` (checked out as `borderlands2-tool/`, gitignored, **required** by Python app), copy `config.example.json` → `config.json` (gitignored; empty fields auto-detect via `config.py`).
 - Run Python app: `python app.py` → `http://localhost:5000` (next free port).
-- Desktop: `cd desktop && make build` / `make dev` (both pass `-tags webkit2_41`). Linux needs webkit2gtk4.1 dev pkgs first (`libgtk-3-dev libwebkit2gtk-4.1-dev` Debian/Ubuntu, `webkit2gtk4.1-devel` Fedora). Standalone patcher: `go build ./cmd/bl2patch`.
 
 ## Verify
 
 - Python: `python -m pytest tests/ -v`; single file: `python -m pytest tests/test_save_io.py -v`.
-- Desktop: `cd desktop && go test ./...` and `go vet ./...`. After touching bound methods, rebuild (`make build` regenerates `frontend/wailsjs/`) and confirm zero binding drift.
 - No Python linter configured; no JS build step (vanilla ES6, refresh to reload).
 
 ## Layout
 
 - Root: `app.py` (Flask JSON API), `save_io.py` (decrypt/parse/mutate/write pipeline), `asset_db.py` (Gibbed data + stat estimator), `steam_achievements.py` (ctypes shim), `patch_bl2.py` (grade-cap byte patch), `config.py` (auto-detect), `templates/index.html` + `static/app.js` + `static/viewer3d.js`.
 - `desktop/`: `internal/{bl2save,bridge,editor,assets,platform}` (six bound services `App,Saves,Editor,Items,Assets,Steam` wrap private `*Bridge` core — never embed it), `frontend/dist/static/api.js` (`window.API` facade over `window.go.bridge.*`), `frontend/wailsjs/` bindings are **committed**, `build/bin/` ignored.
-- `desktop/native/` Fyne track: `native/ui` is the Fyne shell (BL2 theme, bundled fonts, save list, CHARACTER/INVENTORY/SKILLS/ACHIEVEMENTS tabs, status bar, game-running guard disables all edits); `viewer/` is the extracted g3n 3D window (keeps engine gui chrome for its own overlay only); `third_party/g3n-engine` is vendored g3n v0.2.0 with its glfw import on v3.4 (v3.3 C sources collide with fyne's at link time). `make build-native` / `dev-native`; Linux needs mesa + X11 dev pkgs. `desktop/native` has zero `g3n/engine/gui` imports.
 - `tools/parse_{head,weapon}_mics.py` regenerate viewer material sidecars; `BL2_MATI_EXTRACT`, `BL2_PSK_DIR`, `BL2_WEAPON_MODELS_OUT` override paths.
 
 ## Invariants (save path — do not weaken)
