@@ -9,29 +9,6 @@ back atomically with rotating backups and post-write verification.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue) ![Flask](https://img.shields.io/badge/Flask-2.0+-green) ![Three.js](https://img.shields.io/badge/Three.js-r128-orange) ![License](https://img.shields.io/badge/license-personal_use-lightgrey)
 
-> **Go/Wails desktop version now available** — this repository is being
-> rewritten as a native desktop app in Go (`desktop/`). It reimplements the
-> save format (protobuf + Huffman + LZO1X + SHA-1 containers) natively with
-> byte-identical golden tests against the Python reference, requires no
-> Python/browser, and ships as a single binary. Grab prebuilt Windows and
-> Linux binaries from the [Releases](../../releases) page, or run:
->
-> ```bash
-> cd desktop
-> make build             # GUI editor (Linux: webkit2gtk-4.1 via webkit2_41 tag)
-> go build ./cmd/bl2patch   # standalone exe patcher CLI
-> ```
->
-> Linux needs the webkit2gtk 4.1 dev packages:
-> `sudo dnf install webkit2gtk4.1-devel` (Fedora) or
-> `sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev` (Debian/Ubuntu),
-> and builds must pass `-tags webkit2_41` to wails (see `desktop/Makefile`).
->
-> The Python app below remains fully functional during the migration.
-> Differences: achievements are save-state only (written into the save; they
-> unlock when the game loads it — no native Steam API), and the
-> `borderlands2-tool` clone is no longer needed.
-
 ---
 
 ## Quick start
@@ -213,8 +190,7 @@ The viewer works without extracted assets — meshes fall back to procedural
 rarity-tinted placeholders. To enable real character and weapon meshes:
 
 1. Run [UModel](https://www.gildor.org/en/projects/umodel) against your BL2
-   install and export `Startup.upk` + head / weapon / item packages as glTF
-   + PNG into `static/models/` and `static/textures/`.
+   install and export `Startup.upk` + head / weapon / item packages as glTF + PNG into `static/models/` and `static/textures/`.
 2. Regenerate material sidecars:
    ```bash
    python tools/parse_head_mics.py
