@@ -1,38 +1,23 @@
+// Package ui — INVENTORY tab (Fyne). Sub-tabs (WEAPONS/ITEMS/BANK) hold a
+// table each; selecting a row fills the detail pane (estimated stats +
+// resolved type/part paths) and fires onSelect for the 3D preview. Actions
+// (duplicate/delete/set-level/transfer) call session and fold the returned
+// inventory back into every table in one pass.
 package ui
 
 import (
 	"fmt"
+	"image/color"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/g3n/engine/geometry"
-	"github.com/g3n/engine/graphic"
-	"github.com/g3n/engine/gui"
-	"github.com/g3n/engine/material"
-	"github.com/g3n/engine/math32"
-	"github.com/g3n/engine/window"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 
 	"bl2save/desktop/native/session"
 )
-
-// Inventory pane notes (g3n engine v0.2.0, module cache gui/table.go,
-// gui/menu.go):
-// - gui.NewTable(w,h,cols)(*Table,error); AddRow(map[string]interface{});
-//   Clear(); SelectedRows()[]int; SetStatusText(string).
-// - Left-click on a row dispatches OnChange; right-click dispatches
-//   OnTableClick with a TableClickEvent{Row, Col, MouseEvent}.
-//   There is NO programmatic row-selection API (rowCursor is private),
-//   so the right-click row is tracked from the event and the highlight
-//   follows left-clicks natively; the status line names the action row.
-// - Table has no per-cell color API (styles are row-level), so the rarity
-//   hex colors the 3D preview material instead of the rarity cell text.
-// - Menu is a plain panel: gui.NewMenu()+AddOption(text)*MenuItem, item
-//   dispatches OnClick, AddMenu(text,sub) builds the Transfer-to submenu.
-//   v0.2.0 has no popup helper and click coords are table-local, so the
-//   menu opens at a fixed spot in the pane and hides after each action.
-// - Level prompt reuses the character.go commit pattern: commit on Enter
-//   (OnKeyDown KeyEnter) or OnFocusLost, revert on unparseable text.
 
 // catDef binds one inventory sub-tab to its session map key and backend
 // field number (weapons=54, items=53, bank=41).
@@ -51,195 +36,206 @@ func invCats() []catDef {
 	}
 }
 
-// elementColors maps DetectElement names (internal/assets/assets.go) to
-// flat PBR tints.
-func elementColors() map[string]string {
-	return map[string]string{
-		"Fire":      "#ff6600",
-		"Shock":     "#0099ff",
-		"Corrosive": "#00dd00",
-		"Slag":      "#cc00ff",
-		"Explosive": "#ffdd00",
-	}
+// swatchToken is the glyph the rarity column renders, colored by
+// raritySwatchHex.
+const swatchToken = "■"
+
+// invTableData is the pure row projection for one category.
+type invTableData struct {
+	rows []session.ItemView
+	cols int
 }
 
-// parseHexColor parses "#rrggbb" into a g3n color; bad input yields gray.
-func parseHexColor(s string) math32.Color {
-	s = strings.TrimPrefix(strings.TrimSpace(s), "#")
-	if len(s) != 6 {
-		return math32.Color{R: 0.6, G: 0.6, B: 0.6}
+// invTableCols is the column count (swatch, Name, Level, Type, Element).
+const invTableCols = 5
+
+// inventoryTableData projects one category's rows. Category matching is
+// case-insensitive (session keys are lowercase; the tab labels are not).
+func inventoryTableData(sv *session.SaveView, cat string) invTableData {
+	d := invTableData{cols: invTableCols}
+	if sv == nil {
+		return d
 	}
-	n, err := strconv.ParseUint(s, 16, 32)
-	if err != nil {
-		return math32.Color{R: 0.6, G: 0.6, B: 0.6}
-	}
-	return math32.Color{
-		R: float32(n>>16&0xff) / 255,
-		G: float32(n>>8&0xff) / 255,
-		B: float32(n&0xff) / 255,
-	}
+	d.rows = sv.Inventory[invCatKey(cat)]
+	return d
 }
 
-// previewMesh builds the flat-PBR proxy for an item: rarity hex as the
-// base Standard color, element hex as emissive. Geometry is a proxy by
-// kind (weapons read as box "guns", everything else as compact solids).
-// Mask/MIC compositing is explicitly out of scope (slice-1 brief R1).
-func previewMesh(view session.ItemView) *graphic.Mesh {
-	base := parseHexColor(view.RarityColor)
-	mat := material.NewStandard(&base)
-	if ec, ok := elementColors()[view.ElementName]; ok {
-		em := parseHexColor(ec)
-		mat.SetEmissiveColor(&em)
+// invCatKey resolves a category label or key to the SaveView map key.
+func invCatKey(cat string) string {
+	l := nameLower(cat)
+	for _, c := range invCats() {
+		if c.key == l || nameLower(c.label) == l {
+			return c.key
+		}
 	}
-	var mesh *graphic.Mesh
-	switch {
-	case view.IsWeapon:
-		mesh = graphic.NewMesh(geometry.NewBox(0.9, 0.25, 0.25), mat)
-	case strings.Contains(view.Category, "Shield"):
-		mesh = graphic.NewMesh(geometry.NewBox(0.5, 0.7, 0.12), mat)
-	case strings.Contains(view.Category, "Grenade"):
-		mesh = graphic.NewMesh(geometry.NewSphere(0.3, 16, 12), mat)
-	default:
-		mesh = graphic.NewMesh(geometry.NewBox(0.35, 0.35, 0.35), mat)
-	}
-	return mesh
+	return l
 }
 
-// invPanel owns the INVENTORY tab: sub-tabs with Tables, a stats panel,
-// the action menu, and the level prompt. Shell wires onSelect to the 3D
-// preview switch and drives stepCarousel from the viewer bar.
+// raritySwatchHex returns the hex color for a row's rarity, falling back
+// to the common gray when the item carries no color.
+func raritySwatchHex(it session.ItemView) string {
+	if h := strings.TrimSpace(it.RarityColor); h != "" {
+		return h
+	}
+	return hexOf(RarityColors["common"])
+}
+
+// hexOf renders a color as "#rrggbb".
+func hexOf(c color.NRGBA) string {
+	return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
+}
+
+// invPanel owns the INVENTORY tab state.
 type invPanel struct {
 	ses      *session.Session
 	filename string
 	cats     []catDef
 	items    map[string][]session.ItemView
-	tables   map[string]*gui.Table
-	sub      *gui.TabBar
 	active   string
+	selRow   int
+	enabled  func() bool
+	onSelect func(session.ItemView)
 
-	statsTitle *gui.Label
-	statsMeta  *gui.Label
-	statsLines *gui.Label
-	status     *gui.Label
+	sub        *container.AppTabs
+	table      *widget.Table
+	detail     *widget.Label
+	status     *widget.Label
+	transferTo *widget.Select
 
-	menu   *gui.Menu
-	ctxCat string
-	ctxRow int
-
-	levelRow  *gui.Panel
-	levelEdit *gui.Edit
-	levelCat  string
-	levelRowI int
-
-	carouselIdx int
-	onSelect    func(session.ItemView)
+	btnDuplicate *widget.Button
+	btnDelete    *widget.Button
+	btnLevel     *widget.Button
+	btnTransfer  *widget.Button
+	levelEd      *widget.Entry
+	levelRow     fyne.CanvasObject
 }
 
 // newInventoryPanel builds the INVENTORY tab content. onSelect fires on
-// every row select (stats update + preview switch in shell).
-func newInventoryPanel(ses *session.Session, sv *session.SaveView, onSelect func(session.ItemView)) (*gui.Panel, *invPanel) {
-	root := gui.NewPanel(600, 420)
-	root.SetLayout(gui.NewVBoxLayout())
+// every row select (detail update + 3D preview switch in the shell).
+func newInventoryPanel(ses *session.Session, sv *session.SaveView, onSelect func(session.ItemView), enabled func() bool) (fyne.CanvasObject, *invPanel) {
 	p := &invPanel{
 		ses:      ses,
 		filename: sv.Filename,
 		cats:     invCats(),
 		items:    map[string][]session.ItemView{},
-		tables:   map[string]*gui.Table{},
 		active:   "weapons",
+		selRow:   -1,
+		enabled:  enabled,
 		onSelect: onSelect,
 	}
 	for _, c := range p.cats {
 		p.items[c.key] = append([]session.ItemView{}, sv.Inventory[c.key]...)
 	}
 
-	cols := []gui.TableColumn{
-		{Id: "name", Header: "Name", Width: 240, Expand: 1},
-		{Id: "rarity", Header: "Rarity", Width: 110},
-		{Id: "level", Header: "Level", Width: 60},
+	p.table = widget.NewTable(
+		func() (int, int) { return len(p.rows()) + 1, invTableCols },
+		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func(id widget.TableCellID, o fyne.CanvasObject) { p.updateCell(id, o.(*widget.Label)) },
+	)
+	p.table.OnSelected = func(id widget.TableCellID) {
+		if id.Row == 0 {
+			return
+		}
+		p.selectRow(id.Row - 1)
 	}
-	p.sub = gui.NewTabBar(580, 260)
+
+	// Sub-tabs per category.
+	subs := make([]*container.TabItem, 0, len(p.cats))
 	for _, c := range p.cats {
 		c := c
-		tb, err := gui.NewTable(560, 200, cols)
-		if err != nil {
-			tb, _ = gui.NewTable(560, 200, cols[:1])
-		}
-		p.tables[c.key] = tb
-		tb.ShowStatus(true)
-		tab := p.sub.AddTab(c.label)
-		tab.SetPinned(true)
-		tab.SetContent(tb)
-		tb.Subscribe(gui.OnChange, func(string, interface{}) { p.selectChanged(c.key) })
-		tb.Subscribe(gui.OnTableClick, func(_ string, ev interface{}) { p.click(c.key, ev) })
+		subs = append(subs, container.NewTabItemWithIcon(c.label, tabIcon(strings.ToUpper(c.label)),
+			widget.NewLabel(""))) // content is the shared table below
 	}
-	p.sub.SetSelected(0)
-	root.Add(p.sub)
+	p.sub = container.NewAppTabs(subs...)
+	p.sub.OnSelected = func(t *container.TabItem) {
+		p.active = invCatKey(t.Text)
+		p.selRow = -1
+		p.table.Refresh()
+		p.clearDetail()
+	}
 
-	p.statsTitle = gui.NewLabel("Select a row for stats")
-	root.Add(p.statsTitle)
-	p.statsMeta = gui.NewLabel("")
-	root.Add(p.statsMeta)
-	p.statsLines = gui.NewLabel("")
-	root.Add(p.statsLines)
+	p.detail = widget.NewLabel("Select a row for stats")
+	p.detail.Wrapping = fyne.TextWrapWord
 
-	p.levelRow = gui.NewPanel(580, 40)
-	p.levelRow.SetLayout(gui.NewHBoxLayout())
-	p.levelRow.Add(gui.NewLabel("Set level:"))
-	p.levelEdit = gui.NewEdit(80, "level")
-	p.levelRow.Add(p.levelEdit)
-	p.levelEdit.Subscribe(gui.OnFocusLost, func(string, interface{}) { p.commitLevel() })
-	p.levelEdit.Subscribe(gui.OnKeyDown, func(_ string, ev interface{}) {
-		if kev, ok := ev.(*window.KeyEvent); ok && kev.Key == window.KeyEnter {
-			p.commitLevel()
-		}
-	})
-	p.levelRow.SetVisible(false)
-	root.Add(p.levelRow)
+	// Action bar.
+	p.btnDuplicate = widget.NewButton("Duplicate", p.doDuplicate)
+	p.btnDelete = widget.NewButton("Delete", p.doDelete)
+	p.levelEd = widget.NewEntry()
+	p.levelEd.PlaceHolder = "level"
+	p.btnLevel = widget.NewButton("Set Level", p.commitLevel)
+	p.levelRow = container.NewHBox(widget.NewLabel("Set level:"), p.levelEd, p.btnLevel)
 
-	p.menu = gui.NewMenu()
-	p.menu.AddOption("Delete").Subscribe(gui.OnClick, func(string, interface{}) { p.doDelete() })
-	p.menu.AddOption("Duplicate").Subscribe(gui.OnClick, func(string, interface{}) { p.doDuplicate() })
-	transferSub := gui.NewMenu()
+	labels := make([]string, 0, len(p.cats))
 	for _, c := range p.cats {
-		c := c
-		transferSub.AddOption(c.label).Subscribe(gui.OnClick, func(string, interface{}) { p.doTransfer(c.field) })
+		labels = append(labels, c.label)
 	}
-	p.menu.AddMenu("Transfer to", transferSub)
-	p.menu.AddOption("Set level...").Subscribe(gui.OnClick, func(string, interface{}) { p.promptLevel() })
-	p.menu.AddOption("Cancel").Subscribe(gui.OnClick, func(string, interface{}) { p.menu.SetVisible(false) })
-	p.menu.SetVisible(false)
-	root.Add(p.menu)
+	p.transferTo = widget.NewSelect(labels, nil)
+	p.transferTo.SetSelected(labels[0])
+	p.btnTransfer = widget.NewButton("Transfer", p.doTransfer)
 
-	p.status = gui.NewLabel("Inventory ready.")
-	root.Add(p.status)
+	bar := container.NewHBox(p.btnDuplicate, p.btnDelete, p.transferTo, p.btnTransfer, p.levelRow)
 
+	p.status = widget.NewLabel("Inventory ready.")
+
+	detail := container.NewVScroll(p.detail)
+	right := container.NewBorder(bar, p.status, nil, nil, detail)
+	left := container.NewBorder(p.sub, nil, nil, nil, p.table)
+	root := container.NewHSplit(left, right)
+	root.Offset = 0.62
+
+	if p.enabled != nil && !p.enabled() {
+		p.setDisabled(true)
+	}
 	p.refreshAll()
 	return root, p
 }
 
-// refresh rebuilds one table's rows in place (tables persist).
-func (p *invPanel) refresh(cat string) {
-	tb := p.tables[cat]
-	if tb == nil {
-		return
-	}
-	tb.Clear()
-	for _, v := range p.items[cat] {
-		tb.AddRow(map[string]interface{}{
-			"name":   v.DisplayName,
-			"rarity": v.RarityName,
-			"level":  v.Level,
-		})
-	}
-	tb.SetStatusText(fmt.Sprintf("%d items", len(p.items[cat])))
+// rows returns the selected category's rows.
+func (p *invPanel) rows() []session.ItemView {
+	return p.items[p.active]
 }
 
-// refreshAll repatches every sub-tab table in place.
-func (p *invPanel) refreshAll() {
-	for _, c := range p.cats {
-		p.refresh(c.key)
+// updateCell renders one table cell (row 0 = header).
+func (p *invPanel) updateCell(id widget.TableCellID, l *widget.Label) {
+	headers := []string{swatchToken, "Name", "Level", "Type", "Element"}
+	if id.Row == 0 {
+		l.TextStyle = fyne.TextStyle{Bold: true}
+		l.SetText(headers[id.Col])
+		return
 	}
+	l.TextStyle = fyne.TextStyle{}
+	rows := p.rows()
+	i := id.Row - 1
+	if i < 0 || i >= len(rows) {
+		l.SetText("")
+		return
+	}
+	it := rows[i]
+	switch id.Col {
+	case 0:
+		l.SetText(swatchToken)
+		l.Importance = widget.MediumImportance
+	case 1:
+		l.SetText(it.DisplayName)
+	case 2:
+		l.SetText(strconv.Itoa(it.Level))
+	case 3:
+		l.SetText(it.Category)
+	case 4:
+		l.SetText(it.ElementName)
+	}
+}
+
+// refresh rebuilds the active table in place.
+func (p *invPanel) refresh() {
+	if p.table != nil {
+		p.table.Refresh()
+	}
+}
+
+// refreshAll repatches every sub-tab (there is one shared table).
+func (p *invPanel) refreshAll() {
+	p.refresh()
 }
 
 // applyInventory swaps in a fresh post-mutation inventory and repatches.
@@ -250,82 +246,84 @@ func (p *invPanel) applyInventory(inv map[string][]session.ItemView) {
 	p.refreshAll()
 }
 
-// selectChanged handles left-click selection: stats + preview switch.
-func (p *invPanel) selectChanged(cat string) {
-	p.active = cat
-	rows := p.tables[cat].SelectedRows()
-	if len(rows) == 0 {
+// selectRow handles a row selection: detail pane + preview switch.
+func (p *invPanel) selectRow(row int) {
+	rows := p.rows()
+	if row < 0 || row >= len(rows) {
 		return
 	}
-	p.showRow(cat, rows[0])
+	p.selRow = row
+	p.showDetail(rows[row])
+	p.status.SetText(fmt.Sprintf("%s row %d selected", p.active, row))
 }
 
-// click handles right-click: track the event row and pop the action menu.
-func (p *invPanel) click(cat string, ev interface{}) {
-	tce, ok := ev.(gui.TableClickEvent)
-	if !ok || tce.Button != window.MouseButtonRight || tce.Row < 0 {
-		return
-	}
-	if tce.Row >= len(p.items[cat]) {
-		return
-	}
-	p.active = cat
-	p.ctxCat, p.ctxRow = cat, tce.Row
-	p.carouselIdx = tce.Row
-	p.menu.SetPosition(40, 40)
-	p.menu.SetVisible(true)
-	p.status.SetText(fmt.Sprintf("%s row %d: menu open", cat, tce.Row))
+// clearDetail resets the detail pane.
+func (p *invPanel) clearDetail() {
+	p.detail.SetText("Select a row for stats")
 }
 
-// showRow renders stats for one row and fires the preview switch.
-func (p *invPanel) showRow(cat string, row int) {
-	views := p.items[cat]
-	if row < 0 || row >= len(views) {
-		return
-	}
-	v := views[row]
-	p.active = cat
-	p.carouselIdx = row
-	p.statsTitle.SetText(v.DisplayName + "  [" + v.RarityName + "]")
-	p.statsMeta.SetText(fmt.Sprintf("maker: %s  category: %s  element: %s  level: %d",
-		v.Manufacturer, v.Category, v.ElementName, v.Level))
-	if len(v.Stats) == 0 {
-		p.statsLines.SetText("(no estimated stats)")
+// showDetail renders stats and resolved part paths for one item.
+func (p *invPanel) showDetail(it session.ItemView) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s  [%s]\n", it.DisplayName, it.RarityName)
+	fmt.Fprintf(&b, "maker: %s  category: %s  element: %s  level: %d\n",
+		it.Manufacturer, it.Category, it.ElementName, it.Level)
+	if len(it.Stats) == 0 {
+		b.WriteString("(no estimated stats)\n")
 	} else {
-		keys := make([]string, 0, len(v.Stats))
-		for k := range v.Stats {
+		keys := make([]string, 0, len(it.Stats))
+		for k := range it.Stats {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		lines := make([]string, 0, len(keys))
 		for _, k := range keys {
-			lines = append(lines, fmt.Sprintf("%s: %v", k, v.Stats[k]))
+			fmt.Fprintf(&b, "%s: %v\n", k, it.Stats[k])
 		}
-		p.statsLines.SetText(strings.Join(lines, "\n"))
 	}
-	p.status.SetText(fmt.Sprintf("%s row %d selected", cat, row))
+	types, parts := p.parts(it)
+	b.WriteString("Types: " + joinOrDash(types) + "\n")
+	b.WriteString("Parts: " + joinOrDash(parts))
+	p.detail.SetText(b.String())
 	if p.onSelect != nil {
-		p.onSelect(v)
+		p.onSelect(it)
 	}
 }
 
-// stepCarousel moves the preview within the active category (viewer bar
-// prev/next). The Table highlight cannot follow (no selection API), so the
-// status line names the carousel row.
-func (p *invPanel) stepCarousel(d int) {
-	views := p.items[p.active]
-	if len(views) == 0 {
-		p.status.SetText(p.active + ": empty")
-		return
+// parts resolves the item's type/part paths via session.DetailParts,
+// returning empties when unavailable (nil session, missing data).
+func (p *invPanel) parts(it session.ItemView) (types, parts []string) {
+	if p.ses == nil {
+		return nil, nil
 	}
-	p.carouselIdx = (p.carouselIdx + d + len(views)) % len(views)
-	p.showRow(p.active, p.carouselIdx)
+	types, parts, err := p.ses.DetailParts(p.filename, it.Field, it.Index)
+	if err != nil {
+		return nil, nil
+	}
+	return types, parts
 }
 
-// mutate runs a session item-mutation wrapper, repatches tables in place,
+// joinOrDash joins items or returns "—" for an empty slice.
+func joinOrDash(ss []string) string {
+	if len(ss) == 0 {
+		return "—"
+	}
+	return strings.Join(ss, ", ")
+}
+
+// setDisabled toggles every action control.
+func (p *invPanel) setDisabled(dis bool) {
+	for _, w := range []fyne.Disableable{p.btnDuplicate, p.btnDelete, p.btnLevel, p.btnTransfer, p.levelEd} {
+		if dis {
+			w.Disable()
+		} else {
+			w.Enable()
+		}
+	}
+}
+
+// mutate runs a session item-mutation wrapper, folds the returned map back,
 // and surfaces guard/backend errors on the status line.
 func (p *invPanel) mutate(what string, op func() (map[string][]session.ItemView, error)) {
-	p.menu.SetVisible(false)
 	inv, err := op()
 	if err != nil {
 		p.status.SetText(what + ": " + err.Error())
@@ -345,79 +343,72 @@ func (p *invPanel) keyOf(field int) string {
 	return ""
 }
 
-// doDelete removes the menu row.
+// selected returns the currently selected row, ok=false when none.
+func (p *invPanel) selected() (session.ItemView, bool) {
+	rows := p.rows()
+	if p.selRow < 0 || p.selRow >= len(rows) {
+		return session.ItemView{}, false
+	}
+	return rows[p.selRow], true
+}
+
+// doDelete removes the selected row.
 func (p *invPanel) doDelete() {
-	views := p.items[p.ctxCat]
-	if p.ctxRow < 0 || p.ctxRow >= len(views) {
-		p.menu.SetVisible(false)
+	it, ok := p.selected()
+	if !ok || p.ses == nil {
 		return
 	}
-	v := views[p.ctxRow]
 	p.mutate("delete", func() (map[string][]session.ItemView, error) {
-		return p.ses.DeleteItem(p.filename, v.Field, v.Index)
+		return p.ses.DeleteItem(p.filename, it.Field, it.Index)
 	})
 }
 
-// doDuplicate clones the menu row.
+// doDuplicate clones the selected row.
 func (p *invPanel) doDuplicate() {
-	views := p.items[p.ctxCat]
-	if p.ctxRow < 0 || p.ctxRow >= len(views) {
-		p.menu.SetVisible(false)
+	it, ok := p.selected()
+	if !ok || p.ses == nil {
 		return
 	}
-	v := views[p.ctxRow]
 	p.mutate("duplicate", func() (map[string][]session.ItemView, error) {
-		return p.ses.DuplicateItem(p.filename, v.Field, v.Index)
+		return p.ses.DuplicateItem(p.filename, it.Field, it.Index)
 	})
 }
 
-// doTransfer moves the menu row to the chosen field.
-func (p *invPanel) doTransfer(toField int) {
-	views := p.items[p.ctxCat]
-	if p.ctxRow < 0 || p.ctxRow >= len(views) {
-		p.menu.SetVisible(false)
+// doTransfer moves the selected row to the chosen category.
+func (p *invPanel) doTransfer() {
+	it, ok := p.selected()
+	if !ok || p.ses == nil || p.transferTo == nil {
 		return
 	}
-	v := views[p.ctxRow]
-	p.mutate("transfer to "+p.keyOf(toField), func() (map[string][]session.ItemView, error) {
-		return p.ses.TransferItem(p.filename, v.Field, v.Index, toField)
+	toKey := invCatKey(p.transferTo.Selected)
+	var toField int
+	for _, c := range p.cats {
+		if c.key == toKey {
+			toField = c.field
+		}
+	}
+	if toField == 0 {
+		p.status.SetText("transfer: unknown target")
+		return
+	}
+	p.mutate("transfer to "+toKey, func() (map[string][]session.ItemView, error) {
+		return p.ses.TransferItem(p.filename, it.Field, it.Index, toField)
 	})
 }
 
-// promptLevel reveals the level edit for the menu row.
-func (p *invPanel) promptLevel() {
-	views := p.items[p.ctxCat]
-	if p.ctxRow < 0 || p.ctxRow >= len(views) {
-		p.menu.SetVisible(false)
-		return
-	}
-	p.menu.SetVisible(false)
-	p.levelCat, p.levelRowI = p.ctxCat, p.ctxRow
-	p.levelEdit.SetText(strconv.Itoa(views[p.ctxRow].Level))
-	p.levelRow.SetVisible(true)
-	p.status.SetText(fmt.Sprintf("%s row %d: enter new level", p.levelCat, p.levelRowI))
-}
-
-// commitLevel applies the level edit and repatches in place. Unparseable
-// text reverts without a backend call (character.go pattern).
+// commitLevel applies the inline level edit (reverts on unparseable text).
 func (p *invPanel) commitLevel() {
-	if !p.levelRow.Visible() {
+	it, ok := p.selected()
+	if !ok || p.ses == nil {
 		return
 	}
-	views := p.items[p.levelCat]
-	if p.levelRowI < 0 || p.levelRowI >= len(views) {
-		p.levelRow.SetVisible(false)
-		return
-	}
-	val, err := strconv.Atoi(strings.TrimSpace(p.levelEdit.Text()))
+	val, err := strconv.Atoi(strings.TrimSpace(p.levelEd.Text))
 	if err != nil {
-		p.levelEdit.SetText(strconv.Itoa(views[p.levelRowI].Level))
+		p.levelEd.SetText(strconv.Itoa(it.Level))
 		p.status.SetText("invalid level ignored")
 		return
 	}
-	v := views[p.levelRowI]
-	p.levelRow.SetVisible(false)
 	p.mutate("set level", func() (map[string][]session.ItemView, error) {
-		return p.ses.SetItemLevel(p.filename, v.Field, v.Index, val)
+		return p.ses.SetItemLevel(p.filename, it.Field, it.Index, val)
 	})
 }
