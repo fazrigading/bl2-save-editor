@@ -312,7 +312,7 @@ func joinOrDash(ss []string) string {
 
 // setDisabled toggles every action control.
 func (p *invPanel) setDisabled(dis bool) {
-	for _, w := range []fyne.Disableable{p.btnDuplicate, p.btnDelete, p.btnLevel, p.btnTransfer, p.levelEd} {
+	for _, w := range []fyne.Disableable{p.btnDuplicate, p.btnDelete, p.btnLevel, p.btnTransfer, p.levelEd, p.transferTo} {
 		if dis {
 			w.Disable()
 		} else {

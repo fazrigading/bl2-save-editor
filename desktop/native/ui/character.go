@@ -70,6 +70,8 @@ type charForm struct {
 	headEd *widget.Entry
 	skinEd *widget.Entry
 	rgbEds []*widget.Entry
+	tvhm   *widget.Button
+	uvhm   *widget.Button
 }
 
 // newCharacterPanel builds the CHARACTER tab content for an opened save.
@@ -137,17 +139,19 @@ func (f *charForm) build(sv *session.SaveView) fyne.CanvasObject {
 		watchCommit(ed, func() { f.commitNumeric(nf, ed) })
 	}
 
-	// Right column: read-only badges.
+	// Right column: read-only badges, headed by the character name so a
+	// save switch visibly rebuilds content from the fresh SaveView.
 	right := container.NewVBox(
+		widget.NewLabel(f.view.Name),
 		widget.NewLabel("Class: "+f.view.ClassName),
 		widget.NewLabel("XP: "+strconv.FormatUint(f.view.Experience, 10)),
 		widget.NewLabel("Playthroughs: "+strconv.FormatUint(f.view.PlaythroughsCompleted, 10)),
 		widget.NewLabel("Time played: "+strconv.FormatUint(f.view.TimePlayed, 10)+"s"),
 	)
 
-	tvhm := widget.NewButton("UNLOCK TVHM", func() { f.unlockPlaythrough("tvhm") })
-	uvhm := widget.NewButton("UNLOCK UVHM", func() { f.unlockPlaythrough("uvhm") })
-	right.Add(container.NewHBox(tvhm, uvhm))
+	f.tvhm = widget.NewButton("UNLOCK TVHM", func() { f.unlockPlaythrough("tvhm") })
+	f.uvhm = widget.NewButton("UNLOCK UVHM", func() { f.unlockPlaythrough("uvhm") })
+	right.Add(container.NewHBox(f.tvhm, f.uvhm))
 
 	f.status = widget.NewLabel("Edits apply on Enter.")
 	left.Add(f.status)
@@ -180,49 +184,78 @@ func watchCommit(e *widget.Entry, commit func()) {
 
 // setDisabled walks every input and disables (or re-enables) it.
 func (f *charForm) setDisabled(dis bool) {
-	if dis {
-		for _, ed := range f.edits {
+	for _, ed := range f.edits {
+		if dis {
 			ed.Disable()
+		} else {
+			ed.Enable()
 		}
-		f.nameEd.Disable()
-		f.headEd.Disable()
-		f.skinEd.Disable()
-		for _, ed := range f.rgbEds {
+	}
+	for _, ed := range append([]*widget.Entry{f.nameEd, f.headEd, f.skinEd}, f.rgbEds...) {
+		if dis {
 			ed.Disable()
+		} else {
+			ed.Enable()
+		}
+	}
+	for _, b := range []*widget.Button{f.tvhm, f.uvhm} {
+		if b == nil {
+			continue
+		}
+		if dis {
+			b.Disable()
+		} else {
+			b.Enable()
 		}
 	}
 }
 
-// allDisabled reports whether obj holds at least one Entry and every
-// Entry under it is disabled. Used by the guard tests; non-Entry nodes
-// are ignored.
-func allDisabled(obj fyne.CanvasObject) bool {
-	found := false
-	ok := true
-	walkEntries(obj, func(e *widget.Entry) {
-		found = true
-		if !e.Disabled() {
-			ok = false
-		}
-	})
-	return found && ok
-}
-
 // walkEntries visits every widget.Entry in the tree. Fyne exposes no
 // universal child iterator, so the container kinds the panels build
-// (VBox/HBox/Split/Scroll) are unwrapped explicitly.
+// (VBox/HBox/Split/Scroll/Border/AppTabs) are unwrapped explicitly.
 func walkEntries(obj fyne.CanvasObject, fn func(*widget.Entry)) {
+	walkTree(obj, func(o fyne.CanvasObject) {
+		if e, ok := o.(*widget.Entry); ok {
+			fn(e)
+		}
+	})
+}
+
+// walkLabels reports whether any widget.Label in the tree satisfies pred.
+func walkLabels(obj any, pred func(string) bool) bool {
+	o, ok := obj.(fyne.CanvasObject)
+	if !ok {
+		return false
+	}
+	found := false
+	walkTree(o, func(n fyne.CanvasObject) {
+		if l, ok := n.(*widget.Label); ok && pred(l.Text) {
+			found = true
+		}
+	})
+	return found
+}
+
+// walkTree visits every node in the tree, unwrapping the container kinds
+// the panels build. Fyne exposes no universal child iterator.
+func walkTree(obj fyne.CanvasObject, fn func(fyne.CanvasObject)) {
+	if obj == nil {
+		return
+	}
+	fn(obj)
 	switch o := obj.(type) {
-	case *widget.Entry:
-		fn(o)
 	case *container.Split:
-		walkEntries(o.Leading, fn)
-		walkEntries(o.Trailing, fn)
+		walkTree(o.Leading, fn)
+		walkTree(o.Trailing, fn)
 	case *container.Scroll:
-		walkEntries(o.Content, fn)
+		walkTree(o.Content, fn)
+	case *container.AppTabs:
+		for _, it := range o.Items {
+			walkTree(it.Content, fn)
+		}
 	case *fyne.Container:
 		for _, c := range o.Objects {
-			walkEntries(c, fn)
+			walkTree(c, fn)
 		}
 	}
 }

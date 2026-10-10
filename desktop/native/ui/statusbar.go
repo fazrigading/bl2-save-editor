@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -18,9 +17,9 @@ func time3s() <-chan time.Time {
 }
 
 // newStatusBar builds the bottom status bar: asset dir · game-guard chip ·
-// last status line. The guard chip polls IsGameRunning every 3s (same
-// cadence as app.py:_is_game_running).
-func newStatusBar(m *model, st setup.AssetStatus) fyne.CanvasObject {
+// last status line, and returns a setter for the status line. The guard chip
+// polls IsGameRunning every 3s (same cadence as app.py:_is_game_running).
+func newStatusBar(m *model, st setup.AssetStatus) (fyne.CanvasObject, func(string)) {
 	assets := widget.NewLabel("assets: " + st.Dir)
 	assets.TextStyle = fyne.TextStyle{Monospace: true}
 
@@ -43,10 +42,6 @@ func newStatusBar(m *model, st setup.AssetStatus) fyne.CanvasObject {
 		}
 	}()
 
-	return container.NewHBox(assets, guard, status)
-}
-
-// setStatus appends a line to the status bar (wired in T6).
-func setStatusLine(_ *model, format string, args ...any) {
-	_ = fmt.Sprintf(format, args...)
+	setLine := func(s string) { status.SetText(s) }
+	return container.NewHBox(assets, guard, status), setLine
 }
