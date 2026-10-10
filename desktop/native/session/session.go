@@ -33,6 +33,9 @@ type CharacterView struct {
 	Experience, SkillPoints                      uint64
 	Money, Eridium, Seraph, Torgue, GoldenKeys   uint64
 	InventorySize, WeaponSlots, BankSize         uint64
+	OpLevel                                      uint64 // Mayhem/OP level, 0-10
+	PlaythroughsCompleted                        uint64 // read-only badge
+	TimePlayed                                   uint64 // read-only badge (seconds)
 	Colors                                       []Color
 }
 
@@ -320,20 +323,23 @@ func (s *Session) OpenSave(filename string) (*SaveView, error) {
 		Filename: filename,
 		Character: CharacterView{
 			Class: class, ClassName: className, Name: name,
-			Level:         toUint(info["level"]),
-			Experience:    toUint(info["experience"]),
-			SkillPoints:   toUint(info["skill_points"]),
-			Money:         toUint(info["money"]),
-			Eridium:       toUint(info["eridium"]),
-			Seraph:        toUint(info["seraph"]),
-			Torgue:        toUint(info["torgue"]),
-			GoldenKeys:    toUint(info["golden_keys"]),
-			InventorySize: toUint(info["inventory_size"]),
-			WeaponSlots:   toUint(info["weapon_slots"]),
-			BankSize:      toUint(info["bank_size"]),
-			HeadAsset:     head,
-			SkinAsset:     skin,
-			Colors:        colors,
+			Level:                 toUint(info["level"]),
+			Experience:            toUint(info["experience"]),
+			SkillPoints:           toUint(info["skill_points"]),
+			Money:                 toUint(info["money"]),
+			Eridium:               toUint(info["eridium"]),
+			Seraph:                toUint(info["seraph"]),
+			Torgue:                toUint(info["torgue"]),
+			GoldenKeys:            toUint(info["golden_keys"]),
+			InventorySize:         toUint(info["inventory_size"]),
+			WeaponSlots:           toUint(info["weapon_slots"]),
+			BankSize:              toUint(info["bank_size"]),
+			OpLevel:               toUint(info["op_level"]),
+			PlaythroughsCompleted: toUint(info["playthroughs_completed"]),
+			TimePlayed:            toUint(info["time_played"]),
+			HeadAsset:             head,
+			SkinAsset:             skin,
+			Colors:                colors,
 		},
 		Inventory: inventory,
 	}, nil

@@ -585,6 +585,23 @@ func (db *DB) ResolveItemParts(itemInfo map[string]any) map[string]any {
 	return result
 }
 
+// TypesAndParts returns the resolved type path and the non-empty part paths
+// of an already-resolved item (the map ResolveItemParts returns). Types is
+// never empty when the item resolves; parts skips None/empty slots.
+func TypesAndParts(itemInfo map[string]any) (types []string, parts []string) {
+	if tp, _ := itemInfo["type_path"].(string); tp != "" {
+		types = append(types, tp)
+	}
+	if raw, ok := itemInfo["resolved_parts"].([]map[string]any); ok {
+		for _, p := range raw {
+			if path, _ := p["path"].(string); path != "" {
+				parts = append(parts, path)
+			}
+		}
+	}
+	return types, parts
+}
+
 // CleanPartName makes a part path human-readable.
 func (db *DB) CleanPartName(path, slot string) string {
 	if path == "" {

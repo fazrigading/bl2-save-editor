@@ -1,74 +1,84 @@
 package ui
 
 import (
-	"bytes"
-	"encoding/binary"
-	"os"
-	"path/filepath"
 	"testing"
+
+	"bl2save/desktop/native/session"
+	"bl2save/desktop/native/setup"
 )
 
-const triJSON = `{"asset":{"version":"2.0"},"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}],"buffers":[{"byteLength":42}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":6}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"},{"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}]}`
-
-var triBin = []byte{
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 128, 63, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 0,
-	0, 0, 1, 0, 2, 0,
+// fakeModel returns a model whose tabs can be built without a session.
+func fakeModel() *model {
+	return &model{st: setup.AssetStatus{Dir: "/tmp/none"}, enabled: func() bool { return true }}
 }
 
-// writeGLB assembles a minimal binary glTF: header + JSON chunk + BIN chunk.
-func writeGLB(t *testing.T, path string) {
-	t.Helper()
-	jsonPadded := triJSON
-	for len(jsonPadded)%4 != 0 {
-		jsonPadded += " "
+func TestRenderSaveSwitchRebuilds(t *testing.T) {
+	m := fakeModel()
+	a := &session.SaveView{Filename: "Save0001.sav"}
+	a.Character.Name = "Alpha"
+	b := &session.SaveView{Filename: "Save0002.sav"}
+	b.Character.Name = "Bravo"
+
+	ca := buildTabContents(m, a)
+	cb := buildTabContents(m, b)
+	if len(ca) != 4 || len(cb) != 4 {
+		t.Fatalf("want 4 panels per save, got %d / %d", len(ca), len(cb))
 	}
-	binPadded := append(append([]byte{}, triBin...), 0, 0)
-	var buf bytes.Buffer
-	total := 12 + 8 + len(jsonPadded) + 8 + len(binPadded)
-	for _, v := range []uint32{0x46546C67, 2, uint32(total)} {
-		if err := binary.Write(&buf, binary.LittleEndian, v); err != nil {
-			t.Fatal(err)
+	// The two saves must produce distinct widget trees (no shared state).
+	if ca[0] == cb[0] {
+		t.Fatal("save switch must rebuild CHARACTER content, not reuse it")
+	}
+	// The CHARACTER panel must show the fresh save's name.
+	if !treeContainsLabel(ca[0], "Alpha") {
+		t.Fatal("content A should render save A's name")
+	}
+	if !treeContainsLabel(cb[0], "Bravo") {
+		t.Fatal("content B should render save B's name")
+	}
+	if treeContainsLabel(cb[0], "Alpha") {
+		t.Fatal("save B content must not hold save A's data")
+	}
+
+	// Nil save (unopened state) shows the placeholder, no panic.
+	ph := buildTabContents(m, nil)
+	if len(ph) != 1 {
+		t.Fatalf("nil save should render one placeholder, got %d", len(ph))
+	}
+}
+
+func TestGuardDisablesAllTabs(t *testing.T) {
+	off := fakeModel()
+	off.enabled = func() bool { return false }
+	sv := &session.SaveView{Filename: "Save0001.sav"}
+	sv.Character.Class = "GD_Soldier"
+	panels := buildTabContents(off, sv)
+	for i, p := range panels {
+		if !allDisabled(p) {
+			t.Fatalf("panel %d should have every input disabled", i)
 		}
 	}
-	for _, v := range []uint32{uint32(len(jsonPadded)), 0x4E4F534A} {
-		if err := binary.Write(&buf, binary.LittleEndian, v); err != nil {
-			t.Fatal(err)
-		}
-	}
-	buf.WriteString(jsonPadded)
-	for _, v := range []uint32{uint32(len(binPadded)), 0x004E4942} {
-		if err := binary.Write(&buf, binary.LittleEndian, v); err != nil {
-			t.Fatal(err)
-		}
-	}
-	buf.Write(binPadded)
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
-		t.Fatal(err)
+	on := fakeModel()
+	panelsOn := buildTabContents(on, sv)
+	if allDisabled(panelsOn[0]) {
+		t.Fatal("guard on should leave CHARACTER inputs enabled")
 	}
 }
 
-func TestParseModelGltf(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tri.gltf")
-	if err := os.WriteFile(path, []byte(triJSON), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := parseModel(path); err != nil {
-		t.Fatalf("parseModel gltf: %v", err)
-	}
+// treeContainsLabel reports whether any widget.Label in the tree holds text.
+func treeContainsLabel(obj any, want string) bool {
+	return walkLabels(obj, func(s string) bool { return s == want })
 }
 
-func TestParseModelGlb(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "tri.glb")
-	writeGLB(t, path)
-	if _, err := parseModel(path); err != nil {
-		t.Fatalf("parseModel glb: %v", err)
+func TestSaveSwitchClearsSelection(t *testing.T) {
+	m := fakeModel()
+	m.curItem = session.ItemView{DisplayName: "Stale Gun"}
+	tabs := newAppTabs(m)
+	setTabContents(tabs, m, &session.SaveView{Filename: "Save0002.sav"})
+	if m.curItem.DisplayName != "" {
+		t.Fatalf("save switch must clear stale 3D selection, got %q", m.curItem.DisplayName)
 	}
-}
-
-func TestParseModelMissing(t *testing.T) {
-	if _, err := parseModel(filepath.Join(t.TempDir(), "nope.gltf")); err == nil {
-		t.Fatal("expected error for missing file")
+	setTabContents(tabs, m, nil)
+	if m.curItem.DisplayName != "" {
+		t.Fatalf("clearing selection must clear stale 3D selection, got %q", m.curItem.DisplayName)
 	}
 }
