@@ -1,27 +1,19 @@
+// Package ui — CHARACTER tab (Fyne). Form grid + read-only badges; edits
+// commit on focus lost (same commit-on-blur pattern the g3n form used) and
+// re-render from the returned view. Guard off (game running) disables all
+// inputs.
 package ui
 
 import (
 	"strconv"
 	"strings"
 
-	"github.com/g3n/engine/gui"
-	"github.com/g3n/engine/window"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 
 	"bl2save/desktop/native/session"
 )
-
-// Character form notes:
-// - gui.Edit dispatches OnChange per keystroke (edit.go CursorInput), so
-//   committing there would fight typing (clearing "12" to type "20" would
-//   revert mid-edit). Commit on OnFocusLost (dispatched by
-//   Manager.SetKeyFocus, manager.go) and on Enter (OnKeyDown KeyEnter).
-// - Numeric edits parse as int64 so negatives reach the backend, which clamps
-//   out-of-range values itself (level -5 ignored, money -5 -> 0); the form
-//   then re-renders from the returned view, so the clamp is visible.
-// - Each commit sends a single-key SetCharacter map and re-renders every
-//   widget from the returned view in one pass (mirrors applySaveState).
-// - Unparseable text never reaches the backend: the edit reverts to the last
-//   known value with a status note.
 
 // numField binds one numeric SetCharacter change key to its label and its
 // current value in a CharacterView (used for initial text and revert).
@@ -32,20 +24,36 @@ type numField struct {
 }
 
 // charNumFields lists every numeric edit on the form in display order:
-// identity (level/skill points), currencies, sizes.
+// identity (level/skill points/op level), currencies, sizes.
 func charNumFields() []numField {
 	return []numField{
 		{"level", "Level", func(v *session.CharacterView) uint64 { return v.Level }},
 		{"skill_points", "Skill Points", func(v *session.CharacterView) uint64 { return v.SkillPoints }},
 		{"money", "Money", func(v *session.CharacterView) uint64 { return v.Money }},
 		{"eridium", "Eridium", func(v *session.CharacterView) uint64 { return v.Eridium }},
-		{"seraph", "Seraph", func(v *session.CharacterView) uint64 { return v.Seraph }},
-		{"torgue", "Torgue", func(v *session.CharacterView) uint64 { return v.Torgue }},
+		{"seraph", "Seraph Crystals", func(v *session.CharacterView) uint64 { return v.Seraph }},
+		{"torgue", "Torgue Tokens", func(v *session.CharacterView) uint64 { return v.Torgue }},
 		{"golden_keys", "Golden Keys", func(v *session.CharacterView) uint64 { return v.GoldenKeys }},
 		{"inventory_size", "Inventory Size", func(v *session.CharacterView) uint64 { return v.InventorySize }},
 		{"bank_size", "Bank Size", func(v *session.CharacterView) uint64 { return v.BankSize }},
 		{"weapon_slots", "Weapon Slots", func(v *session.CharacterView) uint64 { return v.WeaponSlots }},
+		{"op_level", "OP Level", func(v *session.CharacterView) uint64 { return v.OpLevel }},
 	}
+}
+
+// commitChanges parses one numeric field edit into a single-key
+// SetCharacter map. Empty or unparseable text returns ok=false with no
+// mutation (backend clamps out-of-range values itself).
+func commitChanges(nf numField, text string) (map[string]any, bool) {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return nil, false
+	}
+	val, err := strconv.ParseInt(t, 10, 64)
+	if err != nil {
+		return nil, false
+	}
+	return map[string]any{nf.key: val}, true
 }
 
 // charForm binds widgets to one save's CharacterView.
@@ -54,85 +62,179 @@ type charForm struct {
 	filename string
 	view     session.CharacterView
 	fields   []numField
+	enabled  func() bool
 
-	classLabel *gui.Label
-	xpLabel    *gui.Label
-	status     *gui.Label
-	nameEdit   *gui.Edit
-	edits      map[string]*gui.Edit
+	status *widget.Label
+	edits  map[string]*widget.Entry
+	nameEd *widget.Entry
+	headEd *widget.Entry
+	skinEd *widget.Entry
+	rgbEds []*widget.Entry
 }
 
 // newCharacterPanel builds the CHARACTER tab content for an opened save.
-func newCharacterPanel(ses *session.Session, sv *session.SaveView) *gui.Panel {
-	p := gui.NewPanel(600, 400)
-	p.SetLayout(gui.NewVBoxLayout())
+// enabled is the shell guard hook; false disables every input.
+func newCharacterPanel(ses *session.Session, sv *session.SaveView, enabled func() bool) fyne.CanvasObject {
 	f := &charForm{
 		ses:      ses,
 		filename: sv.Filename,
 		view:     sv.Character,
 		fields:   charNumFields(),
-		edits:    map[string]*gui.Edit{},
+		enabled:  enabled,
+		edits:    map[string]*widget.Entry{},
 	}
-	f.classLabel = gui.NewLabel("")
-	p.Add(f.classLabel)
-	f.xpLabel = gui.NewLabel("")
-	p.Add(f.xpLabel)
+	return f.build(sv)
+}
 
-	f.nameEdit = gui.NewEdit(200, "name")
-	p.Add(newFormRow("Name", f.nameEdit))
-	f.watchCommit(f.nameEdit, func() { f.commitName() })
+// formRow is one label+input grid row.
+func formRow(label string, w fyne.CanvasObject) (fyne.CanvasObject, fyne.CanvasObject) {
+	return widget.NewLabel(label), w
+}
+
+// build lays out the two-column grid and wires commits.
+func (f *charForm) build(sv *session.SaveView) fyne.CanvasObject {
+	left := container.NewVBox()
+
+	// Class read-only: UpdateCharacter has no class key; render locked so
+	// the layout matches the spec.
+	classSel := widget.NewSelect([]string{f.view.ClassName}, nil)
+	classSel.SetSelected(f.view.ClassName)
+	classSel.Disable()
+
+	f.nameEd = newNumEntry()
+	f.nameEd.SetText(f.view.Name)
+	left.Add(gridRow("Name", f.nameEd))
+	watchCommit(f.nameEd, func() { f.commitName() })
+
+	// Appearance: head/skin asset text inputs + 3×RGB numeric inputs.
+	f.headEd = newNumEntry()
+	f.headEd.SetText(f.view.HeadAsset)
+	left.Add(gridRow("Head Asset", f.headEd))
+	watchCommit(f.headEd, func() { f.commitAsset("head_asset", f.headEd, f.view.HeadAsset) })
+
+	f.skinEd = newNumEntry()
+	f.skinEd.SetText(f.view.SkinAsset)
+	left.Add(gridRow("Skin Asset", f.skinEd))
+	watchCommit(f.skinEd, func() { f.commitAsset("skin_asset", f.skinEd, f.view.SkinAsset) })
+
+	for i := range 3 {
+		ed := newNumEntry()
+		if i < len(f.view.Colors) {
+			ed.SetText(strconv.FormatUint(f.view.Colors[i].R, 10))
+		}
+		f.rgbEds = append(f.rgbEds, ed)
+		idx := i
+		watchCommit(ed, func() { f.commitRGB(idx, ed) })
+		left.Add(gridRow("Color R/G/B", ed))
+	}
 
 	for _, nf := range f.fields {
 		nf := nf
-		ed := gui.NewEdit(120, nf.label)
-		p.Add(newFormRow(nf.label, ed))
+		ed := newNumEntry()
+		ed.SetText(strconv.FormatUint(nf.get(&f.view), 10))
 		f.edits[nf.key] = ed
-		f.watchCommit(ed, func() { f.commitNumeric(nf) })
+		left.Add(gridRow(nf.label, ed))
+		watchCommit(ed, func() { f.commitNumeric(nf, ed) })
 	}
 
-	f.status = gui.NewLabel("Edits apply on Enter or focus loss.")
-	p.Add(f.status)
-	f.render(&sv.Character)
-	return p
+	// Right column: read-only badges.
+	right := container.NewVBox(
+		widget.NewLabel("Class: "+f.view.ClassName),
+		widget.NewLabel("XP: "+strconv.FormatUint(f.view.Experience, 10)),
+		widget.NewLabel("Playthroughs: "+strconv.FormatUint(f.view.PlaythroughsCompleted, 10)),
+		widget.NewLabel("Time played: "+strconv.FormatUint(f.view.TimePlayed, 10)+"s"),
+	)
+
+	tvhm := widget.NewButton("UNLOCK TVHM", func() { f.unlockPlaythrough("tvhm") })
+	uvhm := widget.NewButton("UNLOCK UVHM", func() { f.unlockPlaythrough("uvhm") })
+	right.Add(container.NewHBox(tvhm, uvhm))
+
+	f.status = widget.NewLabel("Edits apply on Enter.")
+	left.Add(f.status)
+
+	// Apply guard.
+	if f.enabled != nil && !f.enabled() {
+		f.setDisabled(true)
+	}
+
+	return container.NewHSplit(container.NewVScroll(left), container.NewVScroll(right))
 }
 
-// newFormRow returns a label+edit row.
-func newFormRow(label string, ed *gui.Edit) *gui.Panel {
-	row := gui.NewPanel(600, 40)
-	row.SetLayout(gui.NewHBoxLayout())
-	row.Add(gui.NewLabel(label))
-	row.Add(ed)
-	return row
+// gridRow returns a two-cell row for the form grid.
+func gridRow(label string, w fyne.CanvasObject) fyne.CanvasObject {
+	return container.NewHBox(widget.NewLabel(label), w)
 }
 
-// watchCommit runs commit when the edit loses key focus or on Enter.
-func (f *charForm) watchCommit(ed *gui.Edit, commit func()) {
-	ed.Subscribe(gui.OnFocusLost, func(string, interface{}) { commit() })
-	ed.Subscribe(gui.OnKeyDown, func(_ string, ev interface{}) {
-		if kev, ok := ev.(*window.KeyEvent); ok && kev.Key == window.KeyEnter {
-			commit()
+// newNumEntry makes a single-line numeric-ish entry.
+func newNumEntry() *widget.Entry {
+	e := widget.NewEntry()
+	e.PlaceHolder = "—"
+	return e
+}
+
+// watchCommit commits on Enter (OnSubmitted). Fyne entries have no
+// focus-lost hook; Enter is the explicit commit gesture.
+func watchCommit(e *widget.Entry, commit func()) {
+	e.OnSubmitted = func(string) { commit() }
+}
+
+// setDisabled walks every input and disables (or re-enables) it.
+func (f *charForm) setDisabled(dis bool) {
+	if dis {
+		for _, ed := range f.edits {
+			ed.Disable()
+		}
+		f.nameEd.Disable()
+		f.headEd.Disable()
+		f.skinEd.Disable()
+		for _, ed := range f.rgbEds {
+			ed.Disable()
+		}
+	}
+}
+
+// allDisabled reports whether obj holds at least one Entry and every
+// Entry under it is disabled. Used by the guard tests; non-Entry nodes
+// are ignored.
+func allDisabled(obj fyne.CanvasObject) bool {
+	found := false
+	ok := true
+	walkEntries(obj, func(e *widget.Entry) {
+		found = true
+		if !e.Disabled() {
+			ok = false
 		}
 	})
+	return found && ok
 }
 
-// render rewrites every widget from the view in a single pass.
-func (f *charForm) render(v *session.CharacterView) {
-	f.view = *v
-	f.classLabel.SetText("Class: " + v.ClassName)
-	f.xpLabel.SetText("XP: " + strconv.FormatUint(v.Experience, 10))
-	f.nameEdit.SetText(v.Name)
-	for _, nf := range f.fields {
-		if ed, ok := f.edits[nf.key]; ok {
-			ed.SetText(strconv.FormatUint(nf.get(v), 10))
+// walkEntries visits every widget.Entry in the tree. Fyne exposes no
+// universal child iterator, so the container kinds the panels build
+// (VBox/HBox/Split/Scroll) are unwrapped explicitly.
+func walkEntries(obj fyne.CanvasObject, fn func(*widget.Entry)) {
+	switch o := obj.(type) {
+	case *widget.Entry:
+		fn(o)
+	case *container.Split:
+		walkEntries(o.Leading, fn)
+		walkEntries(o.Trailing, fn)
+	case *container.Scroll:
+		walkEntries(o.Content, fn)
+	case *fyne.Container:
+		for _, c := range o.Objects {
+			walkEntries(c, fn)
 		}
 	}
 }
 
 // commitName applies the name edit and re-renders from the returned view.
 func (f *charForm) commitName() {
-	updated, err := f.ses.SetCharacter(f.filename, map[string]any{"name": f.nameEdit.Text()})
+	if f.ses == nil {
+		return
+	}
+	updated, err := f.ses.SetCharacter(f.filename, map[string]any{"name": f.nameEd.Text})
 	if err != nil {
-		f.nameEdit.SetText(f.view.Name)
+		f.nameEd.SetText(f.view.Name)
 		f.status.SetText("name: " + err.Error())
 		return
 	}
@@ -140,18 +242,69 @@ func (f *charForm) commitName() {
 	f.status.SetText("name updated")
 }
 
-// commitNumeric parses the edit as int64 (negatives allowed, backend clamps),
-// applies the single-key change, and re-renders from the returned view.
-// Unparseable text reverts without a backend call.
-func (f *charForm) commitNumeric(nf numField) {
-	ed := f.edits[nf.key]
-	val, err := strconv.ParseInt(strings.TrimSpace(ed.Text()), 10, 64)
+// commitAsset applies head/skin asset edits.
+func (f *charForm) commitAsset(key string, ed *widget.Entry, current string) {
+	if f.ses == nil {
+		return
+	}
+	updated, err := f.ses.SetCharacter(f.filename, map[string]any{key: ed.Text})
 	if err != nil {
+		ed.SetText(current)
+		f.status.SetText(key + ": " + err.Error())
+		return
+	}
+	f.render(updated)
+	f.status.SetText(key + " updated")
+}
+
+// commitRGB applies one appearance color zone (keeps other channels).
+func (f *charForm) commitRGB(idx int, ed *widget.Entry) {
+	if f.ses == nil {
+		return
+	}
+	r, err := strconv.ParseUint(strings.TrimSpace(ed.Text), 10, 64)
+	if err != nil {
+		if idx < len(f.view.Colors) {
+			ed.SetText(strconv.FormatUint(f.view.Colors[idx].R, 10))
+		}
+		f.status.SetText("invalid color ignored")
+		return
+	}
+	colors := make([]map[string]any, 3)
+	for i := range 3 {
+		c := map[string]any{"a": 255, "r": 127, "g": 127, "b": 127}
+		if i < len(f.view.Colors) {
+			c["a"] = f.view.Colors[i].A
+			c["r"] = f.view.Colors[i].R
+			c["g"] = f.view.Colors[i].G
+			c["b"] = f.view.Colors[i].B
+		}
+		colors[i] = c
+	}
+	colors[idx]["r"] = r
+	updated, err := f.ses.SetCharacter(f.filename, map[string]any{"appearance_colors": colors})
+	if err != nil {
+		f.status.SetText("appearance: " + err.Error())
+		return
+	}
+	f.render(updated)
+	f.status.SetText("appearance updated")
+}
+
+// commitNumeric parses the edit as int64 (negatives allowed, backend
+// clamps), applies the single-key change, and re-renders. Unparseable text
+// reverts without a backend call.
+func (f *charForm) commitNumeric(nf numField, ed *widget.Entry) {
+	if f.ses == nil {
+		return
+	}
+	changes, ok := commitChanges(nf, ed.Text)
+	if !ok {
 		ed.SetText(strconv.FormatUint(nf.get(&f.view), 10))
 		f.status.SetText("invalid input ignored: " + nf.key)
 		return
 	}
-	updated, err := f.ses.SetCharacter(f.filename, map[string]any{nf.key: val})
+	updated, err := f.ses.SetCharacter(f.filename, changes)
 	if err != nil {
 		ed.SetText(strconv.FormatUint(nf.get(&f.view), 10))
 		f.status.SetText(nf.key + ": " + err.Error())
@@ -159,4 +312,38 @@ func (f *charForm) commitNumeric(nf numField) {
 	}
 	f.render(updated)
 	f.status.SetText(nf.key + " updated")
+}
+
+// unlockPlaythrough wires the TVHM/UVHM buttons to session.UnlockPlaythrough.
+func (f *charForm) unlockPlaythrough(target string) {
+	if f.ses == nil {
+		return
+	}
+	ok, err := f.ses.UnlockPlaythrough(f.filename, target)
+	if err != nil {
+		f.status.SetText(target + ": " + err.Error())
+		return
+	}
+	if !ok {
+		f.status.SetText(target + ": already unlocked")
+		return
+	}
+	sv, err := f.ses.OpenSave(f.filename)
+	if err != nil {
+		f.status.SetText(target + ": " + err.Error())
+		return
+	}
+	f.render(&sv.Character)
+	f.status.SetText(target + " unlocked")
+}
+
+// render rewrites every widget from the view in a single pass.
+func (f *charForm) render(v *session.CharacterView) {
+	f.view = *v
+	f.nameEd.SetText(v.Name)
+	for _, nf := range f.fields {
+		if ed, ok := f.edits[nf.key]; ok {
+			ed.SetText(strconv.FormatUint(nf.get(v), 10))
+		}
+	}
 }
