@@ -125,8 +125,8 @@ damage multiplier (1-100×) tied to a UI slider.
   paths and save folders for Windows / Linux / macOS without requiring the
   user to write any path manually.
 - **glTF asset pipeline.** Custom UModel-export → glTF + PNG sidecar pipeline
-  with `tools/parse_head_mics.py` and `tools/parse_weapon_mics.py` regenerating
-  the per-rarity material JSON the viewer consumes. The 3D viewer degrades
+  with `tools/parse_head_mics.py` and `tools/parse_weapon_mics.py`
+  regenerating the per-head and per-rarity material JSON the viewer consumes. The 3D viewer degrades
   gracefully — meshes without extracted assets fall back to a procedural
   rarity-tinted placeholder rather than erroring out.
 - **Single-page no-framework frontend.** Vanilla JS, ~1.5K LOC in `app.js`. No
@@ -187,19 +187,209 @@ damage multiplier (1-100×) tied to a UI slider.
 ## 3D viewer asset extraction (optional)
 
 The viewer works without extracted assets — meshes fall back to procedural
-rarity-tinted placeholders. To enable real character and weapon meshes:
+rarity-tinted placeholders. To enable real character and weapon meshes you
+need to extract two things from your Borderlands 2 install with
+[UModel](https://www.gildor.org/en/projects/umodel):
 
-1. Run [UModel](https://www.gildor.org/en/projects/umodel) against your BL2
-   install and export `Startup.upk` + head / weapon / item packages as glTF + PNG into `static/models/` and `static/textures/`.
-2. Regenerate material sidecars:
-   ```bash
-   python tools/parse_head_mics.py
-   python tools/parse_weapon_mics.py
-   ```
-3. Restart the Flask app.
+- **glTF meshes** (SkeletalMesh3 exports) → `static/models/`
+- **Texture2D files** (the `.tga` or `.png` images referenced by materials) → `static/textures/`
 
-Override the default export paths with `BL2_MATI_EXTRACT`, `BL2_PSK_DIR`, and
-`BL2_WEAPON_MODELS_OUT` environment variables.
+Then run the Python parsers below to turn UModel's raw export into the JSON
+material sidecars the viewer actually loads.
+
+### What the viewer actually shows
+
+The 3D viewer has two character views and one weapon view. Only three asset
+classes are wired up today:
+
+1. **Character bodies** — a single hardcoded glTF per class (Axton, Zer0, Maya,
+   Salvador, Gaige, Krieg) loaded from `static/viewer3d.js`'s
+   `CHARACTER_MODELS`. The body gets a skin-zone recolor from
+   `static/skin_colors.json` (three RGB zone colors composited with
+   `body_mask.png`); it does **not** read any MIC material.
+2. **Character heads** — selected per-save from the save's `head_asset` field,
+   resolved through `static/head_models.json` → glTF URL, with per-head MIC
+   materials from `static/head_materials.json` (diffuse + mask + normal +
+   reflect + optional decal/pattern).
+3. **Weapons** — one glTF per weapon type loaded from
+   `static/viewer3d.js`'s `WEAPON_MODELS`, with per-manufacturer × per-rarity
+   MIC materials from `static/weapon_materials.json`.
+
+Everything else in the game's `.upk` tree (world meshes, particles, UI,
+classmods, items other than weapons, bodies other than the six hardcoded
+characters, the `CD_*_Skin_*` packages, etc.) is **not** loaded by the viewer
+and does not need to be extracted for the 3D viewer to work.
+
+### What UModel must export
+
+UModel works on `.upk` packages. Only two packages are needed for the currently
+wired-up viewer:
+
+| Package | What to export from it | Where it lands | Used by |
+|---|---|---|---|
+| `Startup.upk` | `MaterialInstanceConstant/MasterMati_*.props.txt` (one per manufacturer × rarity, e.g. `MasterMati_DahlCommon.props.txt`) + `Texture2D/*.tga` (the weapon material texture atlas, including shared textures like `GlossyA`, `Pattern_*`, `Logo_*`) + optionally `SkeletalMesh3/*.psk` (gestalt weapon meshes — only if you want `split_gestalt.py` to produce per-manufacturer weapon glTFs) | `static/textures/Startup/MaterialInstanceConstant/` and `static/textures/Startup/Texture2D/` (and optionally `static/models/Startup/SkeletalMesh3/`) | `parse_weapon_mics.py` (and optionally `split_gestalt.py`) |
+| Head packages — every `CD_<Class>_Head_<Name>_SF.upk` listed in `static/head_mapping.json` | `SkeletalMesh3/*.gltf` + `.bin` (head mesh) + `MaterialInstanceConstant/*.props.txt` (the head's `Mati_*.props.txt`) + `Texture2D/*.tga` (head-specific diffuse / mask / normal / emissive textures) | `static/models/heads/<UPK_name>/<UPK_name>_SF/SkeletalMesh3/`, `.../MaterialInstanceConstant/`, `.../Texture2D/` | `parse_head_mics.py` |
+
+**The short version:**
+1. Export `Startup.upk` → `static/textures/Startup/` (keep the folder structure UModel creates: `MaterialInstanceConstant/`, `Texture2D/`, and optionally `SkeletalMesh3/`).
+2. Export every head `.upk` referenced in `static/head_mapping.json` → `static/models/heads/<UPK_name>/`.
+3. Export the six character-body glTFs that `CHARACTER_MODELS` in
+   `static/viewer3d.js` references. They all live inside `Startup.upk` under
+   `SkeletalMesh3/`:
+   - Axton:    `Skel_SoldierBody`
+   - Zer0:     `Skel_AssassinBody`
+   - Maya:     `Skel_SirenBody`
+   - Salvador: `Char_MercBody`
+   - Gaige:    `Skel_MechromancerBody`
+   - Krieg:    `Skel_PsychoBody`
+   In UModel: open `Startup.upk`, go to `SkeletalMesh3`, export each as glTF
+   (UModel glTF export, not PSK/FBX), and place the `.gltf` + `.bin` into
+   `static/models/characters/<Name>/`.
+   Optionally export the mesh's material + textures too (UModel does this if
+   material/texture export is on); the viewer ignores them for the body because
+   skin color comes from `skin_colors.json`, but they don't interfere.
+
+The `CD_*_Skin_*` packages are **not** used by the viewer. The skin system works
+entirely from `static/skin_colors.json`, which stores the three zone colors
+(a/b/c) per skin asset path — no textures, no MICs, no `.upk` extraction
+required. The `CD_*_Skin_*` `.upk`s contain the in-game skin's actual diffuse
++ mask + emissive textures, but the viewer only ever reads the zone-color
+numbers from `skin_colors.json`.
+
+### File formats
+
+- **Textures:** UModel exports textures as `.tga`. The parser converts the ones
+  it actually needs into `.png` next to the `.tga` (idempotent — it skips
+  files that are already newer than the source). The browser only ever loads
+  `.png`. You can pre-convert everything with `mogrify -format png` or let the
+  parser do it on first run.
+- **Meshes:** UModel's glTF export (`.gltf` + `.bin`) is consumed directly by
+  Three.js — no conversion step. For weapon gestalt splitting you can instead
+  export `.psk` from UModel and let `split_gestalt.py` rebuild per-manufacturer
+  glTF files; if you skip that step the viewer uses the six hardcoded
+  character body glTFs and any pre-split weapon glTFs already in
+  `static/models/weapons/`.
+- **Material props (`.props.txt`):** These are UModel's text dump of each
+  `MaterialInstanceConstant`'s scalar / vector / texture parameter overrides.
+  The parsers read them with a small brace-matching parser — format is
+  standard UE3 props output, nothing custom.
+
+### The JSON sidecars
+
+After extraction, three JSON files tell the viewer which texture + parameter
+combo belongs to which in-game asset:
+
+| File | Produced by | Maps | Shape |
+|---|---|---|---|
+| `static/head_models.json` | UModel export layout (or regenerated by a discovery script) | In-game asset path (e.g. `GD_Assassin_Items_MainGame.Assassin.Head_Zero002`) → glTF URL | `{
+  "<asset_path>": "/static/models/heads/CD_Assassin_Head_Zero002/.../Skel_Zero002.gltf"
+}` |
+| `static/head_materials.json` | `python tools/parse_head_mics.py` | Same asset path → MIC material (textures + scalars + vectors) | `{
+  "<asset_path>": {
+    "textures": { "p_Diffuse": "/static/.../Zero002_Dif.png", ... },
+    "scalars": { "p_ShadowsIntensity": 2, ... },
+    "vectors": { "p_AColorShadow": [r,g,b], ... }
+  }
+}` |
+| `static/weapon_materials.json` | `python tools/parse_weapon_mics.py` | `[manufacturer][rarity]` → MIC material for the weapon base color/pattern/decal/normal | `{
+  "Dahl": {
+    "Common": { "textures": {...}, "scalars": {...}, "vectors": {...} },
+    ...
+  },
+  ...
+}` |
+
+`head_mapping.json` is the bridge between the save format and the on-disk head
+folders: it maps each in-game head asset path (the key used by the save's
+`head_asset` field, `head_models.json`, and `head_materials.json`) to the UModel
+package name (e.g. `CD_Assassin_Head_Zero002`) that the head parser uses to find
+the right folder under `static/models/heads/`.
+
+`skin_colors.json` is **not** produced by a parser — it is a static lookup table
+shipped in the repo. Each entry's key is an in-game skin asset path
+(e.g. `GD_Assassin_Items_MainGame.Assassin.Skin_BanditA`); the value holds the
+skin's display name, primary/secondary/tertiary hex colors, and the three zone
+RGB vectors (`a`, `b`, `c`) the body recolor uses. To add a skin the viewer
+doesn't know about yet, add an entry here — no `.upk` extraction needed.
+
+`body_mask.png` (one per character, at
+`static/models/characters/<Name>/body_mask.png`) is a grayscale alpha mask that
+tells the body recolor which vertices belong to skin zone A, B, or C. It is not
+in any `.upk` — it's a standalone image you supply. If it's missing the viewer
+falls back to a luminance-based recolor of the body's existing glTF texture. The
+mask is optional; the viewer still shows a colored body either way.
+
+### Running the parsers
+
+```bash
+# 1. Head materials — walks static/models/heads/ and parses every
+#    MaterialInstanceConstant/*.props.txt it finds.
+python tools/parse_head_mics.py
+
+# 2. Weapon materials — reads MasterMati_*.props.txt from
+#    static/textures/Startup/MaterialInstanceConstant/ and resolves textures
+#    from static/textures/Startup/Texture2D/. Writes PNGs alongside any TGA it
+#    converts.
+python tools/parse_weapon_mics.py
+```
+
+Both parsers are idempotent: re-running them only does work when source files
+are newer than the output JSON or when a `.tga` has no matching `.png` yet.
+
+> **There is also a one-shot shell script** that runs UModel for you and lays
+> every file out in exactly the tree `viewer3d.js` expects:
+> `extract-assets.sh`. The sections below document the individual steps
+> that script performs (useful if you want to do part of it by hand or verify
+> what the script did). Run `bash extract-assets.sh` from the repo root.
+
+### Environment variables
+
+| Variable | Default | What it overrides |
+|---|---|---|
+| `BL2_MATI_EXTRACT` | `static/textures/Startup/` | Root dir for `parse_weapon_mics.py` (must contain `MaterialInstanceConstant/` and `Texture2D/`) |
+| `BL2_PSK_DIR` | where UModel put the `Startup/SkeletalMesh3/` folder (your extract may be under `static/textures/Startup/SkeletalMesh3/` — pass that explicitly) | Input dir for `split_gestalt.py` |
+| `BL2_WEAPON_MODELS_OUT` | `static/models/weapons/` | Output dir for `split_gestalt.py`'s per-manufacturer glTF files |
+
+### Recap: minimal viable extraction
+
+If you just want the viewer to show real assets with the least work:
+
+1. UModel-export `Startup.upk` into `static/textures/Startup/`.
+2. UModel-export every head `.upk` listed in `head_mapping.json` into
+   `static/models/heads/`.
+3. The six character-body glTFs are already inside the `GD_*_Streaming_SF`
+   packages you extracted — each lives in its class package's
+   `SkeletalMesh3/` subfolder. You have two options:
+
+   **Option A — copy into the viewer's expected layout (closest to what
+   `viewer3d.js` expects today):**
+   Copy each body glTF + .bin into `static/models/characters/<Name>/`:
+   - Axton:    `GD_Soldier_Streaming_SF/SkeletalMesh3/Skel_SoldierBody.*` → `static/models/characters/Axton/`
+   - Zer0:     `GD_Assassin_Streaming_SF/SkeletalMesh3/Skel_AssassinBody.*` → `static/models/characters/Zer0/`
+   - Maya:     `GD_Siren_Streaming_SF/SkeletalMesh3/Skel_SirenBody.*` → `static/models/characters/Maya/`
+   - Salvador: `GD_Mercenary_Streaming_SF/SkeletalMesh3/Char_MercBody.*` → `static/models/characters/Salvador/`
+   - Gaige:    `GD_Mechromancer_Streaming_SF/SkeletalMesh3/Skel_MechromancerBody.*` → `static/models/characters/Gaige/`
+   - Krieg:    `GD_Psycho_Streaming_SF/SkeletalMesh3/Skel_PsychoBody.*` → `static/models/characters/Krieg/`
+
+   (The actual package names on disk may differ slightly — check the folder names
+   in your `static/models/` after extraction. The mesh names inside each
+   `SkeletalMesh3/` folder are what matter.)
+
+   **Option B — edit `viewer3d.js`'s `CHARACTER_MODELS`** to point directly at
+   the `GD_*_Streaming_SF/SkeletalMesh3/` paths. That avoids the copy entirely
+   but changes the viewer code. Either works; Option A matches the paths the
+   README and `viewer3d.js` already assume.
+4. (Optional but recommended) Add a `body_mask.png` into each
+   `static/models/characters/<Name>/` folder. This is the per-vertex skin-zone
+   alpha mask that makes the body recolor match the in-game A/B/C zone layout.
+   Without it the viewer falls back to a luminance-based recolor of the body's
+   existing texture — it still works, just less accurate.
+5. `python tools/parse_head_mics.py`
+6. `python tools/parse_weapon_mics.py`
+7. Restart the Flask app.
+
+That's it. Nothing from `GD_*_Streaming_SF.upk`, `CD_*_Skin_*.upk`, or any
+world / item / UI package is needed for the currently wired-up viewer.
 
 ## Usage
 
@@ -233,12 +423,16 @@ bl2-save-editor/
 │   ├── app.js              Frontend application logic
 │   ├── viewer3d.js         Three.js 3D viewer
 │   ├── style.css           BL2-themed holographic UI
-│   ├── models/             glTF character / weapon / item meshes (gitignored)
-│   └── textures/           PNG material maps (gitignored)
+│   ├── models/             glTF character / weapon meshes (gitignored)
+│   │   ├── characters/     six hardcoded body glTFs (Skel_*Body.gltf) + per-char head fallback
+│   │   ├── heads/          one folder per head .upk: <UPK>_SF/{SkeletalMesh3,MaterialInstanceConstant,Texture2D}
+│   │   └── weapons/        per-weapon-type glTF (model.gltf + model.bin), optionally per-manufacturer subdirs
+│   └── textures/           PNG material maps + Startup.upk texture dump (gitignored)
+│       └── Startup/       MaterialInstanceConstant/MasterMati_*.props.txt + Texture2D/*.tga
 ├── tools/
-│   ├── parse_head_mics.py     UModel-export → head-material JSON
-│   ├── parse_weapon_mics.py   UModel-export → weapon-material JSON
-│   └── split_gestalt.py       PSK → per-weapon glTF splitter
+│   ├── parse_head_mics.py     static/models/heads/ → static/head_materials.json
+│   ├── parse_weapon_mics.py   static/textures/Startup/ → static/weapon_materials.json
+│   └── split_gestalt.py       PSK → per-weapon glTF splitter (optional, needs .psk exports)
 ├── tests/
 │   ├── test_save_io.py        Save round-trip + atomic-write tests
 │   └── test_api.py            Flask API surface tests
