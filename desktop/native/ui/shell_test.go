@@ -68,3 +68,17 @@ func TestGuardDisablesAllTabs(t *testing.T) {
 func treeContainsLabel(obj any, want string) bool {
 	return walkLabels(obj, func(s string) bool { return s == want })
 }
+
+func TestSaveSwitchClearsSelection(t *testing.T) {
+	m := fakeModel()
+	m.curItem = session.ItemView{DisplayName: "Stale Gun"}
+	tabs := newAppTabs(m)
+	setTabContents(tabs, m, &session.SaveView{Filename: "Save0002.sav"})
+	if m.curItem.DisplayName != "" {
+		t.Fatalf("save switch must clear stale 3D selection, got %q", m.curItem.DisplayName)
+	}
+	setTabContents(tabs, m, nil)
+	if m.curItem.DisplayName != "" {
+		t.Fatalf("clearing selection must clear stale 3D selection, got %q", m.curItem.DisplayName)
+	}
+}

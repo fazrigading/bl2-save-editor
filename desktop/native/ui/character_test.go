@@ -59,3 +59,24 @@ func TestGuardDisablesChar(t *testing.T) {
 		t.Fatal("guard on should leave inputs enabled")
 	}
 }
+
+func TestRenderRefreshesAllInputs(t *testing.T) {
+	sv := &session.SaveView{Filename: "Save0001.sav"}
+	sv.Character.Name = "Axton"
+	f := newCharForm(nil, sv, func() bool { return true })
+	_ = f.build(sv)
+	updated := sv.Character
+	updated.Name = "Axton-Renamed"
+	updated.HeadAsset = "GD_Soldier_Heads.Head_New"
+	updated.SkinAsset = "GD_Soldier_Skins.Skin_New"
+	f.render(&updated)
+	if f.nameEd.Text != "Axton-Renamed" {
+		t.Fatalf("name not re-rendered, got %q", f.nameEd.Text)
+	}
+	if f.headEd.Text != updated.HeadAsset {
+		t.Fatalf("head not re-rendered, got %q", f.headEd.Text)
+	}
+	if f.skinEd.Text != updated.SkinAsset {
+		t.Fatalf("skin not re-rendered, got %q", f.skinEd.Text)
+	}
+}

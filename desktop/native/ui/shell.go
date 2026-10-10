@@ -4,7 +4,6 @@ package ui
 
 import (
 	"log"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -91,6 +90,9 @@ func newAppTabs(m *model) *container.AppTabs {
 
 // setTabContents swaps every tab's content for a fresh save's panels.
 func setTabContents(tabs *container.AppTabs, m *model, sv *session.SaveView) {
+	// A new save means a new item set: drop the stale 3D selection so View
+	// 3D never opens the previous save's item.
+	m.curItem = session.ItemView{}
 	contents := buildTabContents(m, sv)
 	for i, item := range tabs.Items {
 		if i < len(contents) {
@@ -188,14 +190,4 @@ func newSaveList(m *model, onOpen func(string)) fyne.CanvasObject {
 		}
 	}
 	return list
-}
-
-// guardPoll re-reads the guard every 3s so the status bar chip stays warm
-// (the shell itself reads m.enabled per interaction).
-func guardPoll(m *model) {
-	go func() {
-		for range time.Tick(3 * time.Second) {
-			_ = m.enabled != nil && !m.enabled()
-		}
-	}()
 }

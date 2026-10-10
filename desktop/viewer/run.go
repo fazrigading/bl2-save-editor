@@ -156,11 +156,14 @@ func Run(ses *session.Session, st setup.AssetStatus, item session.ItemView, onCl
 	pl.SetPosition(1, 0, 2)
 	scene.Add(pl)
 
-	a.Subscribe(window.OnWindowSize, func(evname string, ev interface{}) {
+	a.SubscribeID(window.OnWindowSize, vc, func(evname string, ev interface{}) {
 		w, h := a.GetSize()
 		a.Gls().Viewport(0, 0, int32(w), int32(h))
 		cam.SetAspect(float32(w) / float32(h))
 	})
+	// The app singleton survives window close: drop this run's resize
+	// handler so relaunches never accumulate handlers over dead cameras.
+	defer a.UnsubscribeID(window.OnWindowSize, vc)
 	a.Gls().ClearColor(0.04, 0.05, 0.07, 1)
 	a.Run(func(rend *renderer.Renderer, _ time.Duration) {
 		a.Gls().Clear(gls.COLOR_BUFFER_BIT | gls.DEPTH_BUFFER_BIT)

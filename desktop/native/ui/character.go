@@ -77,7 +77,13 @@ type charForm struct {
 // newCharacterPanel builds the CHARACTER tab content for an opened save.
 // enabled is the shell guard hook; false disables every input.
 func newCharacterPanel(ses *session.Session, sv *session.SaveView, enabled func() bool) fyne.CanvasObject {
-	f := &charForm{
+	return newCharForm(ses, sv, enabled).build(sv)
+}
+
+// newCharForm binds widgets to one save's CharacterView (test seam: the
+// form exposes render for re-render assertions).
+func newCharForm(ses *session.Session, sv *session.SaveView, enabled func() bool) *charForm {
+	return &charForm{
 		ses:      ses,
 		filename: sv.Filename,
 		view:     sv.Character,
@@ -85,7 +91,6 @@ func newCharacterPanel(ses *session.Session, sv *session.SaveView, enabled func(
 		enabled:  enabled,
 		edits:    map[string]*widget.Entry{},
 	}
-	return f.build(sv)
 }
 
 // formRow is one label+input grid row.
@@ -374,6 +379,13 @@ func (f *charForm) unlockPlaythrough(target string) {
 func (f *charForm) render(v *session.CharacterView) {
 	f.view = *v
 	f.nameEd.SetText(v.Name)
+	f.headEd.SetText(v.HeadAsset)
+	f.skinEd.SetText(v.SkinAsset)
+	for i, ed := range f.rgbEds {
+		if i < len(v.Colors) {
+			ed.SetText(strconv.FormatUint(v.Colors[i].R, 10))
+		}
+	}
 	for _, nf := range f.fields {
 		if ed, ok := f.edits[nf.key]; ok {
 			ed.SetText(strconv.FormatUint(nf.get(v), 10))

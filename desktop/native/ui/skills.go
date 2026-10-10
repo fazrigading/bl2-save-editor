@@ -101,10 +101,36 @@ func newSkillsTab(ses *session.Session, sv *session.SaveView, enabled func() boo
 	p.points.TextStyle = fyne.TextStyle{Bold: true}
 	p.status = widget.NewLabel("Skills ready.")
 
+	root := container.NewBorder(p.points, p.status, nil, nil, container.NewVScroll(cols))
+	p.applyGuard(sv)
+	return root
+}
+
+// applyGuard disables every stepper when edits are barred: game running,
+// or no skill points left. The backend enforces no budget, so the UI is
+// the spending gate.
+func (p *skillsPanel) applyGuard(sv *session.SaveView) {
+	dis := sv.Character.SkillPoints == 0
 	if p.enabled != nil && !p.enabled() {
-		p.setDisabled(true)
+		dis = true
 	}
-	return container.NewBorder(p.points, p.status, nil, nil, container.NewVScroll(cols))
+	p.setDisabled(dis)
+}
+
+// clampLevel bounds a commit level to [0, max] for a known skill path.
+// Unknown paths pass through (no tree data to bound them).
+func clampLevel(groups []skills.TreeGroup, path string, level int) int {
+	max := skills.MaxFor(groups, path)
+	if max == 0 {
+		return level
+	}
+	if level < 0 {
+		return 0
+	}
+	if level > max {
+		return max
+	}
+	return level
 }
 
 // skillRow builds one skill row: name + points stepper.
@@ -126,6 +152,7 @@ func (p *skillsPanel) commit(path, val string) {
 	if err != nil {
 		return
 	}
+	level = int64(clampLevel(p.groups, path, int(level)))
 	if _, err := p.ses.SetSkills(p.filename, map[string]int64{path: level}); err != nil {
 		p.status.SetText("skills: " + err.Error())
 		return
@@ -152,6 +179,7 @@ func (p *skillsPanel) refreshPoints() {
 		return
 	}
 	p.points.SetText(p.pointsText(sv))
+	p.applyGuard(sv)
 }
 
 // pointsText renders the points-remaining caption (disabled at 0).

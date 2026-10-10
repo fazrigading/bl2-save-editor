@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"bl2save/desktop/internal/skills"
+	"bl2save/desktop/native/session"
 )
 
 func TestSkillProjection(t *testing.T) {
@@ -46,5 +47,44 @@ func TestSkillStepperDisabled(t *testing.T) {
 	p.setDisabled(false)
 	if sel.Disabled() {
 		t.Fatal("stepper should be re-enabled")
+	}
+}
+
+func TestNoPointsDisablesSteppers(t *testing.T) {
+	mk := func(points uint64) *session.SaveView {
+		sv := &session.SaveView{Filename: "Save0001.sav"}
+		sv.Character.Class = "GD_Soldier"
+		sv.Character.SkillPoints = points
+		return sv
+	}
+	broke := mk(0)
+	obj := newSkillsTab(nil, broke, func() bool { return true })
+	if !allDisabled(obj) {
+		t.Fatal("zero skill points should disable every stepper")
+	}
+	rich := mk(5)
+	if obj := newSkillsTab(nil, rich, func() bool { return true }); allDisabled(obj) {
+		t.Fatal("available points should leave steppers enabled")
+	}
+}
+
+func TestClampLevel(t *testing.T) {
+	groups := []skills.TreeGroup{{
+		Name: "Guerrilla",
+		Skills: []skills.Skill{
+			{Path: "GD_Soldier_Skills.Guerrilla.Sentry", Name: "Sentry", Max: 5},
+		},
+	}}
+	if got := clampLevel(groups, "GD_Soldier_Skills.Guerrilla.Sentry", 9); got != 5 {
+		t.Fatalf("over-max should clamp to 5, got %d", got)
+	}
+	if got := clampLevel(groups, "GD_Soldier_Skills.Guerrilla.Sentry", 3); got != 3 {
+		t.Fatalf("in-range should pass through, got %d", got)
+	}
+	if got := clampLevel(groups, "GD_Soldier_Skills.Guerrilla.Sentry", -2); got != 0 {
+		t.Fatalf("negative should clamp to 0, got %d", got)
+	}
+	if got := clampLevel(groups, "unknown.path", 9); got != 9 {
+		t.Fatalf("unknown path should pass through, got %d", got)
 	}
 }
