@@ -67,3 +67,17 @@ func TestFontBundled(t *testing.T) {
 		}
 	}
 }
+
+func TestThemeScaleEnlarged(t *testing.T) {
+	th := NewTheme()
+	// Base sizes (spec) × uiScale 1.5: text 14→21, heading 20→30.
+	if got := th.Size(fynetheme.SizeNameText); got != 21 {
+		t.Fatalf("text size want 21, got %v", got)
+	}
+	if got := th.Size(fynetheme.SizeNameHeadingText); got != 30 {
+		t.Fatalf("heading size want 30, got %v", got)
+	}
+	if got := th.Size(fynetheme.SizeNameCaptionText); got != 16.5 {
+		t.Fatalf("caption size want 16.5, got %v", got)
+	}
+}

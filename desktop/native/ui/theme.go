@@ -126,22 +126,27 @@ func (t *bl2Theme) Font(style fyne.TextStyle) fyne.Resource {
 	return resourceRajdhaniTtf
 }
 
+// uiScale enlarges every theme size (text, padding, icons) — widget
+// min-sizes derive from these, so the whole UI grows proportionally.
+// System-level scaling stays Fyne's job (FYNE_SCALE env).
+const uiScale = float32(1.5)
+
 func (t *bl2Theme) Size(name fyne.ThemeSizeName) float32 {
 	switch name {
 	case fynetheme.SizeNameHeadingText:
-		return sizeHeading
+		return sizeHeading * uiScale
 	case fynetheme.SizeNameSubHeadingText:
-		return sizeSubHeading
+		return sizeSubHeading * uiScale
 	case fynetheme.SizeNameText:
-		return sizeText
+		return sizeText * uiScale
 	case fynetheme.SizeNameCaptionText:
-		return sizeCaption
+		return sizeCaption * uiScale
 	case fynetheme.SizeNamePadding:
-		return 6
+		return 6 * uiScale
 	case fynetheme.SizeNameInlineIcon:
-		return 20
+		return 20 * uiScale
 	default:
-		return t.Theme.Size(name)
+		return t.Theme.Size(name) * uiScale
 	}
 }
 
