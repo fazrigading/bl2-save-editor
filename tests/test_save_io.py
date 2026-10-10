@@ -8,9 +8,7 @@ MoSCoW refs: P8-M1 (unit tests for save I/O), P8-M2 (test fixtures)
 import os
 import sys
 import shutil
-import struct
 import random
-import tempfile
 import pytest
 
 # Ensure project root is importable

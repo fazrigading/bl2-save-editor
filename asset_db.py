@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import os
 import json
-import re
 from typing import Any, Optional
 
 from config import get_config
@@ -211,7 +210,8 @@ class AssetDB:
 
     def _save_cache(self) -> None:
         """Serialize lookup tables to SQLite for faster subsequent loads."""
-        import sqlite3, pickle
+        import sqlite3
+        import pickle
         cache = self._cache_path()
         conn = sqlite3.connect(cache)
         conn.execute("CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, data BLOB)")
@@ -237,7 +237,8 @@ class AssetDB:
 
     def _load_cache(self) -> bool:
         """Load lookup tables from SQLite cache. Returns True on success."""
-        import sqlite3, pickle
+        import sqlite3
+        import pickle
         try:
             conn = sqlite3.connect(self._cache_path())
             rows = dict(conn.execute("SELECT key, data FROM cache").fetchall())

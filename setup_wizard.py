@@ -143,7 +143,7 @@ def step_venv(yes: bool, skip: bool) -> Path | None:
     if VENV_DIR.exists():
         ok(f"Existing venv detected at {VENV_DIR.relative_to(ROOT)}")
         return VENV_DIR
-    if not confirm(f"Create a virtual environment at .venv? (recommended)", default_yes=True, yes=yes):
+    if not confirm("Create a virtual environment at .venv? (recommended)", default_yes=True, yes=yes):
         info("Skipping venv. Dependencies will install into system Python.")
         return None
     info(f"Creating {VENV_DIR.relative_to(ROOT)}...")

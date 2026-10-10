@@ -10,6 +10,7 @@ import platform
 import socket
 import threading
 import webbrowser
+import time as _time
 from flask import Flask, render_template, jsonify, request
 
 import save_io
@@ -26,9 +27,6 @@ mimetypes.add_type("application/octet-stream", ".bin")
 app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.jinja_env.auto_reload = True
-
-
-import time as _time
 
 _game_running_cache = {"value": False, "ts": 0.0}
 

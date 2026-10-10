@@ -6,7 +6,11 @@ mesh islands to manufacturers. Each weapon type produces 8 manufacturer-
 specific models plus a default (full gestalt) fallback.
 """
 
-import struct, json, math, os, io
+import struct
+import json
+import math
+import os
+import io
 from collections import defaultdict
 
 # ── PSK reader ──────────────────────────────────────────────
@@ -69,17 +73,28 @@ def read_psk(path):
 
 def classify_bone(name):
     """Returns (manufacturer_or_special, is_exclusive)"""
-    if "Bandit" in name: return "Bandit"
-    if "Dahl" in name: return "Dahl"
-    if "Hyperion" in name: return "Hyperion"
-    if "Vladof" in name: return "Vladof"
-    if "Jakobs" in name or "Jacob" in name or name == "Sideloader": return "Jakobs"
-    if "Maliwan" in name or name.startswith("Fin_"): return "Maliwan"
-    if "Torgue" in name: return "Torgue"
-    if "Tediore" in name: return "Tediore"
-    if name in ("MoonClip", "MoonclipShell"): return "_moonclip"
-    if "Alien" in name: return "_alien"
-    if name.startswith("Shell") and name[5:].isdigit(): return "Hyperion"
+    if "Bandit" in name:
+        return "Bandit"
+    if "Dahl" in name:
+        return "Dahl"
+    if "Hyperion" in name:
+        return "Hyperion"
+    if "Vladof" in name:
+        return "Vladof"
+    if "Jakobs" in name or "Jacob" in name or name == "Sideloader":
+        return "Jakobs"
+    if "Maliwan" in name or name.startswith("Fin_"):
+        return "Maliwan"
+    if "Torgue" in name:
+        return "Torgue"
+    if "Tediore" in name:
+        return "Tediore"
+    if name in ("MoonClip", "MoonclipShell"):
+        return "_moonclip"
+    if "Alien" in name:
+        return "_alien"
+    if name.startswith("Shell") and name[5:].isdigit():
+        return "Hyperion"
     return None  # shared
 
 
@@ -101,7 +116,8 @@ def find_components(faces, wedges):
         return x
     def union(a, b):
         a, b = find(a), find(b)
-        if a != b: parent[a] = b
+        if a != b:
+            parent[a] = b
 
     for fis in edge_faces.values():
         for i in range(1, len(fis)):
@@ -235,7 +251,8 @@ def write_gltf(path, out_verts, out_normals, out_uvs, out_uvs2, out_indices, mes
     for idx in out_indices:
         buf.write(struct.pack("<I" if use_u32 else "<H", idx))
     idx_size = buf.tell()
-    while buf.tell() % 4: buf.write(b"\x00")
+    while buf.tell() % 4:
+        buf.write(b"\x00")
 
     # Positions
     pos_off = buf.tell()
@@ -328,7 +345,9 @@ def compute_normals(verts, tri_indices):
     for n in normals:
         ln = math.sqrt(n[0]**2 + n[1]**2 + n[2]**2)
         if ln > 0:
-            n[0] /= ln; n[1] /= ln; n[2] /= ln
+            n[0] /= ln
+            n[1] /= ln
+            n[2] /= ln
         else:
             n[1] = 1.0
     return [tuple(n) for n in normals]
@@ -393,7 +412,8 @@ def process_weapon(weapon_type, psk_path, output_dir):
             label = direct[ci]
             if label == "_moonclip":
                 for m in ("Tediore", "Torgue"):
-                    if m in mfr_faces: mfr_faces[m].update(face_set)
+                    if m in mfr_faces:
+                        mfr_faces[m].update(face_set)
             elif label == "_alien":
                 for m in MANUFACTURERS:
                     mfr_faces[m].update(face_set)

@@ -6,9 +6,7 @@ MoSCoW ref: P8-S1 (integration tests for API endpoints)
 """
 import os
 import sys
-import json
 import shutil
-import tempfile
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

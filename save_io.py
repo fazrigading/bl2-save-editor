@@ -4,7 +4,6 @@ Provides read/write/modify operations without CLI arg parsing.
 """
 from __future__ import annotations
 
-import sys
 import os
 import re
 import json as _json
@@ -19,18 +18,23 @@ import logging
 import threading
 from typing import Any, Optional
 
+import sys
+
+# The borderlands2-tool checkout lives inside config; import it early so the
+# borderlands packages below resolve, leaving no statements before the imports.
 from config import get_config
 
 _cfg = get_config()
 if _cfg["borderlands2_tool_dir"]:
     sys.path.insert(0, _cfg["borderlands2_tool_dir"])
 
-from borderlands.savefile import BaseApp
-from borderlands.datautil.protobuf import (
+# sys.path is set above; these resolve only after that bootstrap.
+from borderlands.savefile import BaseApp  # noqa: E402
+from borderlands.datautil.protobuf import (  # noqa: E402
     read_protobuf, write_protobuf,
     read_repeated_protobuf_value, write_repeated_protobuf_value,
 )
-from borderlands.datautil.common import (
+from borderlands.datautil.common import (  # noqa: E402
     rotate_data_right, xor_data,
     create_body, replace_raw_item_key,
 )

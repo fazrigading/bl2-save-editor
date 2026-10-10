@@ -17,7 +17,6 @@ convert the (low-res, 64x64) TGA from the umodel extract as a fallback.
 import json
 import os
 import sys
-import shutil
 from pathlib import Path
 
 try:
