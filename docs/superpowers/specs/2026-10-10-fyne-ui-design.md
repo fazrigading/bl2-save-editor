@@ -1,6 +1,6 @@
 # Fyne UI Replacement for the g3n Native App — Design
 
-**Date:** 2026-10-10 · **Status:** approved design, pending user spec review
+**Date:** 2026-10-10 · **Status:** implemented (branch `feat/fyne-ui`, plan `docs/superpowers/plans/2026-10-10-fyne-ui.md`)
 
 ## Goal
 
